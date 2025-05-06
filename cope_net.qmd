@@ -1,0 +1,191 @@
+---
+title: "Assignment 2: Copenhagen Networks Study"
+author: "Aurora Sterpellone & Gina Tedesco"
+format: pdf
+editor: visual
+---
+
+## Introduction
+
+*Some words for the introduction*
+
+
+
+## Dataset Handling
+
+### Libraries and Explore the Dataset
+
+Loading libraries
+
+```{r}
+set.seed(123)
+library(dplyr)
+library(readr)
+library(igraph)
+library(RColorBrewer)
+library(tinytex)
+library(ggplot2)
+library(knitr)
+```
+
+```{r}
+#| warning: false
+require(igraph)
+g <- read_graph("~/Desktop/Social Networks/A1/network.gml", format = "gml")
+
+g
+
+```
+
+*This GML file loads an undirected graph named "crime" that comprises 1380 nodes and 1476 edges, with multiple metadata attributes attached (e.g., citation, description, and tags).*
+
+## Questions and Answers
+
+### What is the number of nodes and links? (question from ass 1)
+
+```{r}
+num_nodes <- vcount(g)
+num_edges <- ecount(g)
+cat("Number of nodes:", num_nodes, "\n")
+cat("Number of edges:", num_edges, "\n")
+```
+
+*^^^ keeping this code in case we need it. Can be deleted if we don't*
+
+#### 1. Delete a fraction of real edges in the network and create a table
+of those links deleted (positive class) and of links non-present
+(negative class)
+
+```{r}
+# Fraction of edges to remove (e.g., 10%)
+frac_to_remove <- 0.1
+edges_to_remove <- sample(E(g), size = floor(frac_to_remove * ecount(g)))
+
+# Create positive class: removed edges
+positive_edges <- as_data_frame(edges_to_remove)
+
+# Remove edges from the graph
+g_train <- delete_edges(g, edges_to_remove)
+
+# Create negative class: random node pairs that are not connected
+non_edges <- t(combn(V(g), 2))
+non_edges <- non_edges[!apply(non_edges, 1, function(x) are.connected(g, x[1], x[2])), ]
+negative_sample <- non_edges[sample(1:nrow(non_edges), size = nrow(positive_edges)), ]
+colnames(negative_sample) <- c("from", "to")
+
+# Combine into a dataframe with labels
+df_pos <- data.frame(from = positive_edges$from, to = positive_edges$to, class = 1)
+df_neg <- data.frame(from = as_ids(negative_sample[,1]), to = as_ids(negative_sample[,2]), class = 0)
+
+link_data <- rbind(df_pos, df_neg)
+
+```
+
+*Analysis*
+
+#### 2. Generate a number of proximity/similarty metrics heuristics for each link in the positive and negative class
+
+```{r}
+# Function to compute heuristics
+compute_heuristics <- function(graph, df) {
+  cn <- sapply(1:nrow(df), function(i) {
+    length(intersect(neighbors(graph, df$from[i]), neighbors(graph, df$to[i])))
+  })
+  jc <- sapply(1:nrow(df), function(i) {
+    union_n <- union(neighbors(graph, df$from[i]), neighbors(graph, df$to[i]))
+    if (length(union_n) == 0) return(0)
+    length(intersect(neighbors(graph, df$from[i]), neighbors(graph, df$to[i]))) / length(union_n)
+  })
+  aa <- sapply(1:nrow(df), function(i) {
+    common <- intersect(neighbors(graph, df$from[i]), neighbors(graph, df$to[i]))
+    sum(1 / log(degree(graph, common) + 1e-10))  # Avoid div by 0
+  })
+  pa <- sapply(1:nrow(df), function(i) {
+    degree(graph, df$from[i]) * degree(graph, df$to[i])
+  })
+  
+  df$common_neighbors <- cn
+  df$jaccard <- jc
+  df$adamic_adar <- aa
+  df$preferential_attachment <- pa
+  return(df)
+}
+
+link_data_features <- compute_heuristics(g_train, link_data)
+
+
+```
+
+*Analysis*
+
+#### 3. Train a binary classifier to predict the links, i.e., to predict the class (positive/negative) using those heuristics. Use crossvalidation.
+
+```{r}
+# Split into training and testing sets
+set.seed(123)
+train_indices <- sample(1:nrow(link_data_features), size = 0.7 * nrow(link_data_features))
+train <- link_data_features[train_indices, ]
+test <- link_data_features[-train_indices, ]
+
+# Train logistic regression model
+model <- glm(class ~ common_neighbors + jaccard + adamic_adar + preferential_attachment,
+             data = train, family = "binomial")
+
+summary(model)
+
+
+```
+
+*Analysis*
+
+#### 4. Evaluate the precision of the model. Which heuristic is the most important. Why do you think it is the most important?
+
+```{r}
+# Predict probabilities and class
+pred_probs <- predict(model, newdata = test, type = "response")
+pred_class <- ifelse(pred_probs > 0.5, 1, 0)
+
+# Confusion matrix and accuracy
+table(Predicted = pred_class, Actual = test$class)
+accuracy <- mean(pred_class == test$class)
+cat("Accuracy:", round(accuracy, 3), "\n")
+
+# Importance
+coef(summary(model))
+
+
+```
+
+*Analysis*
+
+#### 4. Comment on potential ways to improve the link prediction
+
+# If we feel ambitious we can maybe recreate these "potential improvements" 
+
+```{r}
+
+
+```
+
+*From Chatgpt*
+
+*To improve link prediction, we could include more complex features such as:*
+
+- *Katz centrality or rooted PageRank*
+
+- *Node embeddings (e.g., Node2Vec or GCNs)*
+
+- *Temporal dynamics if timestamps were available*
+
+- *Community detection features (e.g., are both nodes in the same community?)*
+
+## Conclusion
+
+*Some words abotu conclusion*
+
+## References
+
+-   **Crime network dataset – KONECT** (2017, October). Retrieved from <http://konect.cc/networks/moreno_crime>
+
+-   **KONECT – The Koblenz Network Collection**\
+    Kunegis, J. (2013). In *Proc. Int. Conf. on World Wide Web Companion* (pp. 1343–1350). Retrieved from <http://dl.acm.org/citation.cfm?id=2488173>; presentation available at <https://www.slideshare.net/kunegis/presentationwow>; further information at <http://konect.cc/>.
