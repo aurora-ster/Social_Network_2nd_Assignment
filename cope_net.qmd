@@ -9,8 +9,6 @@ editor: visual
 
 *Some words for the introduction*
 
-
-
 ## Dataset Handling
 
 ### Libraries and Explore the Dataset
@@ -26,58 +24,168 @@ library(RColorBrewer)
 library(tinytex)
 library(ggplot2)
 library(knitr)
+library(boot)
+library(linkprediction)
+library(RSpectra)
+library(Matrix)
 ```
 
 ```{r}
 #| warning: false
-require(igraph)
-g <- read_graph("~/Desktop/Social Networks/A1/network.gml", format = "gml")
+# Load each cleaned graph
+g_fb     <- read_graph(paste0(base_path, "fb_friends.gml"), format = "gml")
+g_calls  <- read_graph(paste0(base_path, "calls.gml"), format = "gml")
+g_sms    <- read_graph(paste0(base_path, "sms.gml"), format = "gml")
 
-g
+# View basic info (optional)
+g_fb
+g_calls
+g_sms
+
 
 ```
 
-*This GML file loads an undirected graph named "crime" that comprises 1380 nodes and 1476 edges, with multiple metadata attributes attached (e.g., citation, description, and tags).*
+*This GML file loads an undirected graph named "crime" that comprises 1380 nodes and 1476 edges, with multiple metadata attributes attached (e.g., citation, description, and tags).- this should be changed to desctibe out networks*
+
+### Manual Similarity Metrics (Exploratory Example)
+
+*To demonstrate understanding of the core proximity metrics discussed in class, we replicate the professor’s example by computing common neighbors, Jaccard similarity, Adamic-Adar, and preferential attachment for two selected nodes in the Facebook network. We also visualize their shortest path.- this needs to be edited as well* 
+
+
+```{r}
+# Function to compute similarity metrics for two nodes in any graph
+compute_manual_metrics <- function(g, v1, v2, network_name = "network") {
+  nei_v1 <- neighbors(g, v1)
+  nei_v2 <- neighbors(g, v2)
+  
+  common <- intersect(nei_v1, nei_v2)
+  length_common <- length(common)
+  
+  jaccard <- length(common) / length(union(nei_v1, nei_v2))
+  degrees_common <- degree(g, common)
+  adamic_adar <- sum(1 / log(degrees_common + 1e-10))  # avoid div by 0
+  pref_attach <- degree(g, v1) * degree(g, v2)
+  
+  cat("-----", network_name, "-----\n")
+  cat("Nodes:", v1, "and", v2, "\n")
+  cat("Common Neighbors:", length_common, "\n")
+  cat("Jaccard:", round(jaccard, 3), "\n")
+  cat("Adamic-Adar:", round(adamic_adar, 3), "\n")
+  cat("Preferential Attachment:", pref_attach, "\n\n")
+}
+
+# Choose nodes (same for all networks if valid)
+v1 <- 1
+v2 <- 34
+
+# Run for all 3 networks
+compute_manual_metrics(g_fb, v1, v2, "Facebook Friends")
+compute_manual_metrics(g_calls, v1, v2, "Calls")
+compute_manual_metrics(g_sms, v1, v2, "SMS")
+
+
+# Function to compute metrics and plot graph between v1 and v2
+compute_and_plot <- function(g, v1, v2, title = "Network") {
+  if (v1 > vcount(g) || v2 > vcount(g)) {
+    cat("Skipping", title, "- nodes out of range\n")
+    return()
+  }
+  
+  nei_v1 <- neighbors(g, v1)
+  nei_v2 <- neighbors(g, v2)
+  common <- intersect(nei_v1, nei_v2)
+  
+  jaccard <- length(common) / length(union(nei_v1, nei_v2))
+  degrees_common <- degree(g, common)
+  adamic_adar <- sum(1 / log(degrees_common + 1e-10))
+  pref_attach <- degree(g, v1) * degree(g, v2)
+  
+  cat("-----", title, "-----\n")
+  cat("Nodes:", v1, "and", v2, "\n")
+  cat("Common Neighbors:", length(common), "\n")
+  cat("Jaccard:", round(jaccard, 3), "\n")
+  cat("Adamic-Adar:", round(adamic_adar, 3), "\n")
+  cat("Preferential Attachment:", pref_attach, "\n\n")
+  
+  # Plot
+  ll <- layout_with_fr(g)
+  V(g)$color <- "white"
+  E(g)$color <- "lightgray"
+  V(g)$color[c(v1, v2)] <- "orange"
+  V(g)$color[common] <- "cyan"
+  
+  sp <- shortest_paths(g, from = v1, to = v2)$vpath[[1]]
+  if (length(sp) > 0) {
+    E(g, path = sp)$color <- "red"
+  }
+  
+  plot(g,
+       layout = ll,
+       vertex.label = NA,
+       vertex.size = 5,
+       main = paste("Shortest path between", v1, "and", v2, "in", title))
+}
+
+# Run for all 3 networks
+v1 <- 1
+v2 <- 34
+
+compute_and_plot(g_fb, v1, v2, "Facebook Friends")
+compute_and_plot(g_calls, v1, v2, "Calls")
+compute_and_plot(g_sms, v1, v2, "SMS")
+
+
+
+```
+
 
 ## Questions and Answers
 
-### What is the number of nodes and links? (question from ass 1)
+#### 1. Delete a fraction of real edges in the network and create a table of those links deleted (positive class) and of links non-present (negative class)
 
 ```{r}
-num_nodes <- vcount(g)
-num_edges <- ecount(g)
-cat("Number of nodes:", num_nodes, "\n")
-cat("Number of edges:", num_edges, "\n")
-```
-
-*^^^ keeping this code in case we need it. Can be deleted if we don't*
-
-#### 1. Delete a fraction of real edges in the network and create a table
-of those links deleted (positive class) and of links non-present
-(negative class)
-
-```{r}
-# Fraction of edges to remove (e.g., 10%)
+# Step 1: Remove a fraction of real edges (10%)
 frac_to_remove <- 0.1
-edges_to_remove <- sample(E(g), size = floor(frac_to_remove * ecount(g)))
+edges_to_remove <- sample(E(g_fb), size = floor(frac_to_remove * ecount(g_fb)))
+positive_edges <- as_data_frame(g_fb)[edges_to_remove, ]
+g_train <- delete_edges(g_fb, edges_to_remove)
 
-# Create positive class: removed edges
-positive_edges <- as_data_frame(edges_to_remove)
+# Step 2: Fast sampling of negative class
+sample_non_edges <- function(graph, n) {
+  non_edges <- matrix(nrow = 0, ncol = 2)
+  while (nrow(non_edges) < n) {
+    candidates <- cbind(
+      sample(V(graph), n, replace = TRUE),
+      sample(V(graph), n, replace = TRUE)
+    )
+    # Remove self-loops
+    candidates <- candidates[candidates[,1] != candidates[,2], , drop = FALSE]
+    # Only keep non-edges
+    new_non_edges <- candidates[!apply(candidates, 1, function(x) are_adjacent(graph, x[1], x[2])), ]
+    non_edges <- unique(rbind(non_edges, new_non_edges))
+    non_edges <- non_edges[1:min(nrow(non_edges), n), , drop = FALSE]
+  }
+  return(non_edges)
+}
 
-# Remove edges from the graph
-g_train <- delete_edges(g, edges_to_remove)
-
-# Create negative class: random node pairs that are not connected
-non_edges <- t(combn(V(g), 2))
-non_edges <- non_edges[!apply(non_edges, 1, function(x) are.connected(g, x[1], x[2])), ]
-negative_sample <- non_edges[sample(1:nrow(non_edges), size = nrow(positive_edges)), ]
+# Step 3: Create balanced negative class
+negative_sample <- sample_non_edges(g_fb, nrow(positive_edges))
 colnames(negative_sample) <- c("from", "to")
 
-# Combine into a dataframe with labels
-df_pos <- data.frame(from = positive_edges$from, to = positive_edges$to, class = 1)
-df_neg <- data.frame(from = as_ids(negative_sample[,1]), to = as_ids(negative_sample[,2]), class = 0)
+# Step 4: Combine into a labeled dataframe
+df_pos <- data.frame(from = positive_edges$from, to = 
+                       positive_edges$to, class = 1)
+df_neg <- data.frame(from = negative_sample[,1], to = 
+                       negative_sample[,2], class = 0)
+
 
 link_data <- rbind(df_pos, df_neg)
+
+# View summary
+table(link_data$class)
+
+# Peek at the first few rows
+head(link_data)
 
 ```
 
@@ -113,26 +221,43 @@ compute_heuristics <- function(graph, df) {
 
 link_data_features <- compute_heuristics(g_train, link_data)
 
+head(link_data_features)
+summary(link_data_features)
+table(link_data_features$class)
 
 ```
 
 *Analysis*
 
-#### 3. Train a binary classifier to predict the links, i.e., to predict the class (positive/negative) using those heuristics. Use crossvalidation.
+#### 3. Train a binary classifier to predict the links, i.e., to predict the class (positive/negative) using those heuristics. Use cross validation.
 
 ```{r}
+#| warning: false
+# Load required package
+library(boot)
+
 # Split into training and testing sets
 set.seed(123)
 train_indices <- sample(1:nrow(link_data_features), size = 0.7 * nrow(link_data_features))
 train <- link_data_features[train_indices, ]
 test <- link_data_features[-train_indices, ]
 
-# Train logistic regression model
+# Train logistic regression model on training set
 model <- glm(class ~ common_neighbors + jaccard + adamic_adar + preferential_attachment,
              data = train, family = "binomial")
 
+# Show model summary
 summary(model)
 
+# 10-fold cross-validation on the full data
+cv_model <- glm(class ~ common_neighbors + jaccard + adamic_adar + preferential_attachment,
+                data = link_data_features, family = "binomial")
+
+set.seed(123)
+cv_results <- cv.glm(link_data_features, cv_model, K = 10)
+
+# Show CV error (misclassification estimate)
+cv_results$delta
 
 ```
 
@@ -141,51 +266,318 @@ summary(model)
 #### 4. Evaluate the precision of the model. Which heuristic is the most important. Why do you think it is the most important?
 
 ```{r}
-# Predict probabilities and class
+# Predict probabilities and classes on the test set
 pred_probs <- predict(model, newdata = test, type = "response")
 pred_class <- ifelse(pred_probs > 0.5, 1, 0)
 
-# Confusion matrix and accuracy
-table(Predicted = pred_class, Actual = test$class)
+# Confusion matrix
+conf_matrix <- table(Predicted = pred_class, Actual = test$class)
+print(conf_matrix)
+
+# Accuracy
 accuracy <- mean(pred_class == test$class)
 cat("Accuracy:", round(accuracy, 3), "\n")
 
-# Importance
-coef(summary(model))
+# Precision, Recall, F1
+TP <- conf_matrix["1", "1"]
+FP <- conf_matrix["1", "0"]
+FN <- conf_matrix["0", "1"]
+
+precision <- TP / (TP + FP)
+recall <- TP / (TP + FN)
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+cat("Precision:", round(precision, 3), "\n")
+cat("Recall:", round(recall, 3), "\n")
+cat("F1 Score:", round(f1_score, 3), "\n")
+
+# Coefficient importance
+cat("\nModel Coefficients:\n")
+print(coef(summary(model)))
+
 
 
 ```
 
 *Analysis*
 
-#### 4. Comment on potential ways to improve the link prediction
-
-# If we feel ambitious we can maybe recreate these "potential improvements" 
+#### 5. Comment on potential ways to improve the link prediction
 
 ```{r}
+#*From Chatgpt*
+
+#*To improve link prediction, we could include more complex features such as:*
+
+# *Katz centrality or rooted PageRank*
+# *Node embeddings (e.g., Node2Vec or GCNs)*
+# Temporal dynamics if timestamps were available: calls or sms
+# *Community detection features (e.g., are both nodes in the same community?)*
+
+#From Gina
+#I ended up feeling ambitious and recreated parts of the exercise for each of the suggestions Chatgpt gave. 
+
+```
+
+##### Katz Centrality or Rooted PageRank
+
+```{r}
+# Step 1: Compute Katz (via eigenvector centrality)
+katz_scores <- eigen_centrality(g_train, directed = FALSE)$vector
+
+link_data_features$katz_from <- katz_scores[as.numeric(link_data_features$from)]
+link_data_features$katz_to <- katz_scores[as.numeric(link_data_features$to)]
+link_data_features$katz_product <- link_data_features$katz_from * link_data_features$katz_to
+
+# Step 2: Compute PageRank
+pagerank_scores <- page_rank(g_train, algo = "prpack", directed = FALSE)$vector
+
+link_data_features$pr_from <- pagerank_scores[as.numeric(link_data_features$from)]
+link_data_features$pr_to <- pagerank_scores[as.numeric(link_data_features$to)]
+link_data_features$pr_product <- link_data_features$pr_from * link_data_features$pr_to
+
+# Step 3: Train/test split
+set.seed(123)
+train_indices <- sample(1:nrow(link_data_features), size = 0.7 * nrow(link_data_features))
+train <- link_data_features[train_indices, ]
+test <- link_data_features[-train_indices, ]
+
+# Step 4: Fit new logistic regression model with added features
+model <- glm(class ~ common_neighbors + jaccard + adamic_adar + preferential_attachment +
+               katz_product + pr_product,
+             data = train, family = "binomial")
+
+# Step 5: Predict and evaluate
+pred_probs <- predict(model, newdata = test, type = "response")
+pred_class <- ifelse(pred_probs > 0.5, 1, 0)
+
+conf_matrix <- table(Predicted = pred_class, Actual = test$class)
+print(conf_matrix)
+
+accuracy <- mean(pred_class == test$class)
+cat("Accuracy:", round(accuracy, 3), "\n")
+
+TP <- conf_matrix["1", "1"]
+FP <- conf_matrix["1", "0"]
+FN <- conf_matrix["0", "1"]
+
+precision <- TP / (TP + FP)
+recall <- TP / (TP + FN)
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+cat("Precision:", round(precision, 3), "\n")
+cat("Recall:", round(recall, 3), "\n")
+cat("F1 Score:", round(f1_score, 3), "\n")
+
+# Step 6: Coefficients
+cat("\nModel Coefficients:\n")
+print(coef(summary(model)))
+
+```
+
+
+##### Node embeddings (e.g., Node2Vec or GCNs)
+```{r}
+# Step 1: Compute the adjacency matrix
+adj <- as_adj(g_train, sparse = TRUE)
+
+# Step 2: Compute Laplacian matrix
+D <- Diagonal(x = rowSums(adj))
+L <- D - adj
+
+# Step 3: Compute eigenvectors of the Laplacian
+# We'll skip the first eigenvector (which is trivial)
+embedding_dim <- 32
+eig <- eigs_sym(L, k = embedding_dim + 1, which = "SM")  # smallest magnitude
+
+# Node embeddings (skip the first column)
+node_embeddings <- eig$vectors[, 2:(embedding_dim + 1)]
+
+# Step 4: Reduce embeddings to a 1D similarity score (dot product)
+# Compute product of embeddings for each link
+link_data_features$spec_from <- rowSums(node_embeddings[link_data_features$from, ])
+link_data_features$spec_to   <- rowSums(node_embeddings[link_data_features$to, ])
+link_data_features$spec_product <- link_data_features$spec_from * link_data_features$spec_to
+
+# First two embedding dimensions for plotting
+embedding_2d <- node_embeddings[, 1:2]
+
+# Convert to data frame
+embedding_df <- as.data.frame(embedding_2d)
+colnames(embedding_df) <- c("X1", "X2")
+embedding_df$node <- 1:nrow(embedding_df)
+
+# Plot using ggplot2
+library(ggplot2)
+
+ggplot(embedding_df, aes(x = X1, y = X2)) +
+  geom_point(alpha = 0.6, color = "steelblue", size = 1) +
+  theme_minimal() +
+  labs(title = "Spectral Embedding of Nodes",
+       x = "1st Spectral Dimension",
+       y = "2nd Spectral Dimension")
+
 
 
 ```
 
-*From Chatgpt*
 
-*To improve link prediction, we could include more complex features such as:*
+##### Temporal dynamics if timestamps were available: calls or sms
+```{r}
+# STEP 1: Load the graph with timestamps (e.g., calls or sms)
+g <- g_calls  # or g_sms
 
-- *Katz centrality or rooted PageRank*
+# STEP 2: Remove 10% of edges to create train/test split
+frac_to_remove <- 0.1
+edges_to_remove <- sample(E(g), size = floor(frac_to_remove * ecount(g)))
+positive_edges <- as_data_frame(g)[edges_to_remove, ]
+g_train <- delete_edges(g, edges_to_remove)
 
-- *Node embeddings (e.g., Node2Vec or GCNs)*
+# STEP 3: Generate negative edges (fast sampling)
+sample_non_edges <- function(graph, n) {
+  non_edges <- matrix(nrow = 0, ncol = 2)
+  while (nrow(non_edges) < n) {
+    candidates <- cbind(
+      sample(V(graph), n, replace = TRUE),
+      sample(V(graph), n, replace = TRUE)
+    )
+    candidates <- candidates[candidates[,1] != candidates[,2], , drop = FALSE]
+    new_non_edges <- candidates[!apply(candidates, 1, function(x) are_adjacent(graph, x[1], x[2])), ]
+    non_edges <- unique(rbind(non_edges, new_non_edges))
+    non_edges <- non_edges[1:min(nrow(non_edges), n), , drop = FALSE]
+  }
+  return(non_edges)
+}
 
-- *Temporal dynamics if timestamps were available*
+negative_sample <- sample_non_edges(g, nrow(positive_edges))
+colnames(negative_sample) <- c("from", "to")
 
-- *Community detection features (e.g., are both nodes in the same community?)*
+# STEP 4: Combine positive & negative classes
+df_pos <- data.frame(from = positive_edges$from, to = positive_edges$to, class = 1)
+df_neg <- data.frame(from = negative_sample[,1], to = negative_sample[,2], class = 0)
+link_data <- rbind(df_pos, df_neg)
+
+# STEP 5: Compute structural heuristics
+compute_heuristics <- function(graph, df) {
+  cn <- sapply(1:nrow(df), function(i) {
+    length(intersect(neighbors(graph, df$from[i]), neighbors(graph, df$to[i])))
+  })
+  jc <- sapply(1:nrow(df), function(i) {
+    u <- union(neighbors(graph, df$from[i]), neighbors(graph, df$to[i]))
+    if (length(u) == 0) return(0)
+    length(intersect(neighbors(graph, df$from[i]), neighbors(graph, df$to[i]))) / length(u)
+  })
+  aa <- sapply(1:nrow(df), function(i) {
+    common <- intersect(neighbors(graph, df$from[i]), neighbors(graph, df$to[i]))
+    sum(1 / log(degree(graph, common) + 1e-10))
+  })
+  pa <- sapply(1:nrow(df), function(i) {
+    degree(graph, df$from[i]) * degree(graph, df$to[i])
+  })
+  df$common_neighbors <- cn
+  df$jaccard <- jc
+  df$adamic_adar <- aa
+  df$preferential_attachment <- pa
+  return(df)
+}
+
+link_data_features <- compute_heuristics(g_train, link_data)
+
+# STEP 6: Extract edge timestamp data and compute temporal features
+edge_df <- as_data_frame(g, what = "edges")
+edge_df$timestamp <- as.numeric(edge_df$timestamp)
+
+# Frequency and most recent contact per edge
+freq_table <- edge_df %>%
+  group_by(from, to) %>%
+  summarise(freq = n(), last_time = max(timestamp)) %>%
+  ungroup()
+
+# STEP 7: Merge temporal features into link_data_features
+link_data_features <- left_join(link_data_features, freq_table, by = c("from", "to"))
+
+# Fill missing values for non-edges
+link_data_features$freq[is.na(link_data_features$freq)] <- 0
+link_data_features$last_time[is.na(link_data_features$last_time)] <- 0
+
+# STEP 8: Train/test split
+set.seed(123)
+train_indices <- sample(1:nrow(link_data_features), size = 0.7 * nrow(link_data_features))
+train <- link_data_features[train_indices, ]
+test <- link_data_features[-train_indices, ]
+
+# STEP 9: Fit logistic regression with temporal features
+model <- glm(class ~ common_neighbors + jaccard + adamic_adar + preferential_attachment +
+               freq + last_time,
+             data = train, family = "binomial")
+
+summary(model)
+
+# STEP 10: Evaluate performance
+pred_probs <- predict(model, newdata = test, type = "response")
+pred_class <- ifelse(pred_probs > 0.5, 1, 0)
+conf_matrix <- table(Predicted = pred_class, Actual = test$class)
+
+# Metrics
+accuracy <- mean(pred_class == test$class)
+TP <- conf_matrix["1", "1"]
+FP <- conf_matrix["1", "0"]
+FN <- conf_matrix["0", "1"]
+
+precision <- TP / (TP + FP)
+recall <- TP / (TP + FN)
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Print results
+print(conf_matrix)
+cat("Accuracy:", round(accuracy, 3), "\n")
+cat("Precision:", round(precision, 3), "\n")
+cat("Recall:", round(recall, 3), "\n")
+cat("F1 Score:", round(f1_score, 3), "\n")
+
+```
+
+
+##### Community detection features (e.g., are both nodes in the same community?)
+```{r}
+# Convert directed training graph to undirected
+g_train_undirected <- as.undirected(g_train, mode = "collapse")
+
+# Now run Louvain on the undirected graph
+comm <- cluster_louvain(g_train_undirected)
+
+# Get community memberships
+membership_vec <- membership(comm)
+
+# Assign community IDs to link_data_features
+link_data_features$comm_from <- membership_vec[as.numeric(link_data_features$from)]
+link_data_features$comm_to   <- membership_vec[as.numeric(link_data_features$to)]
+
+# Add binary feature: 1 if nodes are in the same community, 0 otherwise
+link_data_features$same_community <- ifelse(
+  link_data_features$comm_from == link_data_features$comm_to, 1, 0
+)
+
+
+set.seed(123)
+train_indices <- sample(1:nrow(link_data_features), size = 0.7 * nrow(link_data_features))
+train <- link_data_features[train_indices, ]
+test <- link_data_features[-train_indices, ]
+
+
+model <- glm(class ~ common_neighbors + jaccard + adamic_adar + preferential_attachment +
+               same_community,
+             data = train, family = "binomial")
+
+summary(model)
+
+
+```
+
 
 ## Conclusion
 
-*Some words abotu conclusion*
+*Some concluding words*
 
 ## References
 
--   **Crime network dataset – KONECT** (2017, October). Retrieved from <http://konect.cc/networks/moreno_crime>
-
--   **KONECT – The Koblenz Network Collection**\
-    Kunegis, J. (2013). In *Proc. Int. Conf. on World Wide Web Companion* (pp. 1343–1350). Retrieved from <http://dl.acm.org/citation.cfm?id=2488173>; presentation available at <https://www.slideshare.net/kunegis/presentationwow>; further information at <http://konect.cc/>.
+-  Sapiezynski, P., Stopczynski, A., Wind, D. K., Leskovec, J., & Lehmann, S. (2019). Interaction data from the Copenhagen Networks Study [Dataset]. KONECT – The Koblenz Network Collection. https://networks.skewed.de/net/copenhagen
