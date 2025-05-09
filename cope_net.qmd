@@ -7,7 +7,9 @@ editor: visual
 
 ## Introduction
 
-*Some words for the introduction*
+Understanding the structure and dynamics of social networks is fundamental to analyzing human behavior and predicting future interactions. The Copenhagen Networks Study provides a unique opportunity to explore real-world social connectivity through multiple communication channels among a cohort of university students. In this project, we investigate three distinct but overlapping social networks: Facebook friendships, phone calls, and SMS exchanges. We represent each as an undirected graph. Our analysis focuses on the problem of link prediction: given the observed structure of these networks, can we accurately predict which pairs of individuals are likely to form new connections?
+
+To address this, we systematically apply and evaluate a range of network proximity and similarity metrics, such as common neighbors, Jaccard similarity, Adamic-Adar, and preferential attachment. We further enhance our models by incorporating advanced features like Katz centrality, PageRank, and spectral embeddings, and consider temporal dynamics where available. By training and validating binary classifiers on these features, we assess the predictive power of each heuristic and discuss strategies for improving link prediction in complex social systems. Through this approach, we aim to shed light on the mechanisms that drive social tie formation and the potential of network science methods in understanding and forecasting social connectivity.
 
 ## Dataset Handling
 
@@ -32,6 +34,9 @@ library(Matrix)
 
 ```{r}
 #| warning: false
+
+base_path <- "./"
+
 # Load each cleaned graph
 g_fb     <- read_graph(paste0(base_path, "fb_friends.gml"), format = "gml")
 g_calls  <- read_graph(paste0(base_path, "calls.gml"), format = "gml")
@@ -42,15 +47,29 @@ g_fb
 g_calls
 g_sms
 
-
 ```
 
-*This GML file loads an undirected graph named "crime" that comprises 1380 nodes and 1476 edges, with multiple metadata attributes attached (e.g., citation, description, and tags).- this should be changed to desctibe out networks*
+We loaded three different networks:
+
+1.  **Facebook Friends Network (`g_fb`)**:
+    -   **Type**: Undirected graph (U---)
+    -   **Vertices**: 800
+    -   **Edges**: 6429 - edges indicate friendships between pairs of vertices
+    -   **Description**: This network represents friendships on Facebook. It is undirected, meaning that the friendships are mutual. The graph includes attributes such as citation, description, name, tags, URL, vertex IDs, positions, and edge IDs.
+2.  **Calls Network (`g_calls`)**:
+    -   **Type**: Directed graph (D---)
+    -   **Vertices**: 536
+    -   **Edges**: 3600 - edges indicate calls from one vertex to another
+    -   **Description**: This network represents call interactions. It is directed, meaning that the edges have a direction, indicating who called whom. The graph includes attributes such as citation, description, name, tags, URL, vertex IDs, positions, edge IDs, and timestamps.
+3.  **SMS Network (`g_sms`)**:
+    -   **Type**: Directed graph (D---)
+    -   **Vertices**: 568
+    -   **Edges**: 24333 - edges indicate SMS messages sent from one vertex to another
+    -   **Description**: This network represents SMS interactions. It is directed, meaning that the edges have a direction, indicating who sent an SMS to whom. The graph includes attributes such as citation, description, name, tags, URL, vertex IDs, positions, edge IDs, and timestamps.
 
 ### Manual Similarity Metrics (Exploratory Example)
 
-*To demonstrate understanding of the core proximity metrics discussed in class, we replicate the professor’s example by computing common neighbors, Jaccard similarity, Adamic-Adar, and preferential attachment for two selected nodes in the Facebook network. We also visualize their shortest path.- this needs to be edited as well* 
-
+To demonstrate understanding of the core proximity metrics discussed in class, we apply a function to compute common neighbors, Jaccard similarity, Adamic-Adar, and preferential attachment for two selected nodes across three different networks: Facebook Friends, Calls, and SMS. This function is applied to each network to calculate and display these metrics. Additionally, we visualize the shortest path between the selected nodes in each network, highlighting the nodes and edges involved in the path.
 
 ```{r}
 # Function to compute similarity metrics for two nodes in any graph
@@ -135,9 +154,15 @@ compute_and_plot(g_calls, v1, v2, "Calls")
 compute_and_plot(g_sms, v1, v2, "SMS")
 
 
-
 ```
 
+These visualizations help in understanding the structural properties of each network and the relationships between the selected nodes.
+
+The **Facebook Friends Network** show a dense cluster of nodes, indicating a highly interconnected network. [The shortest path between nodes 1 and 34 is highlighted in red, showing the direct connections between these nodes]{.underline}. Nodes 1 and 34 are colored in orange, and their common neighbors are colored in cyan, providing a visual representation of their proximity within the network.
+
+The **Calls Network** graph appears more spread out compared to the Facebook Friends network, indicating a less dense connectivity. [The shortest path between nodes 1 and 34 is again highlighted in red.]{.underline} The orange and cyan nodes represent the selected nodes and their common neighbors, respectively, showing their interaction within the call network.
+
+Finally, the **SMS Network** also shows a spread-out structure, indicating varied connectivity. [The shortest path between nodes 1 and 34 is highlighted in red.]{.underline} The orange and cyan nodes indicate the selected nodes and their common neighbors, illustrating their proximity in the SMS network.
 
 ## Questions and Answers
 
@@ -189,7 +214,11 @@ head(link_data)
 
 ```
 
-*Analysis*
+The table of classes shows a balanced dataset with equal numbers of positive and negative samples.
+
+Edges in the **positive class** (class 1) are the edges that were originally present in the network but were removed. They represent real connections that existed in the network. Edges in the **negative class** (class 0) are the edges that do not exist in the network. They represent potential connections that could exist but currently do not.
+
+The dataset is balanced with an equal number of positive and negative samples, which is useful for training machine learning models where class imbalance can be an issue.
 
 #### 2. Generate a number of proximity/similarty metrics heuristics for each link in the positive and negative class
 
@@ -227,7 +256,17 @@ table(link_data_features$class)
 
 ```
 
-*Analysis*
+To generate proximity/similarity metrics for each link in both the positive and negative classes, we computed several metrics using a function applied to a graph and a dataframe containing the links.
+
+-   The *common neighbors* metric counts the number of neighbors shared by two nodes. Higher values indicate a higher likelihood of a link existing between the nodes.
+
+-   *Jaccard Similarity* measures the similarity between the neighborhoods of two nodes. A value closer to 1 indicates a higher similarity.
+
+-   The *Adamic-Adar index* gives more weight to common neighbors that have fewer connections. It is useful for identifying meaningful connections in sparse networks.
+
+-   The *Preferential attachment* metric is based on the idea that nodes with higher degrees are more likely to form connections. Higher values indicate a higher likelihood of a link existing between the nodes.
+
+These metrics were computed for each link in the dataset, which includes both positive (existing) and negative (non-existing) links. The results were stored in a dataframe, providing a comprehensive set of proximity metrics for further analysis or machine learning tasks. The summary statistics helps in understanding the distribution and characteristics of these metrics across the dataset.
 
 #### 3. Train a binary classifier to predict the links, i.e., to predict the class (positive/negative) using those heuristics. Use cross validation.
 
@@ -261,7 +300,15 @@ cv_results$delta
 
 ```
 
-*Analysis*
+The coefficients for **`common_neighbors`**, **`jaccard`**, **`adamic_adar`**, and **`preferential_attachment`** indicate their respective contributions to predicting the class. Positive coefficients suggest a positive association with the class, while negative coefficients suggest a negative association. The significance levels (p-values) help determine which heuristics are statistically significant predictors.
+
+The cross-validation error (**`cv_results$delta`**) provides an estimate of the model's misclassification rate. A lower error rate indicates better model performance and generalization.
+
+The null deviance and residual deviance provide information on the model's fit. A lower residual deviance compared to the null deviance suggests that the model fits the data well.
+
+The AIC (Akaike Information Criterion) is a measure of the model's quality, with lower values indicating a better model.
+
+We can conclude the logistic regression model, trained using the computed heuristics, provides a way to predict the class (positive/negative) of links. The cross-validation error gives an estimate of the model's performance on unseen data, and the model summary provides insights into the significance and contribution of each heuristic to the prediction. This approach helps in understanding the importance of each heuristic in predicting the class and ensures that the model generalizes well to new data.
 
 #### 4. Evaluate the precision of the model. Which heuristic is the most important. Why do you think it is the most important?
 
@@ -299,7 +346,25 @@ print(coef(summary(model)))
 
 ```
 
-*Analysis*
+The *confusion matrix* shows that the model correctly predicted 179 negative links and 154 positive links. It misclassified 33 negative links as positive and 20 positive links as negative.
+
+The *accuracy* of 0.863 indicates that the model correctly predicted the class for 86.3% of the test instances.
+
+A *precision* of 0.885 indicates that 88.5% of the predicted positive links were correct.
+
+A *recall* of 0.824 indicates that the model identified 82.4% of the actual positive links.
+
+An *F1 score* of 0.853 indicates a good balance between precision and recall.
+
+The *model coefficients* show the contribution of each heuristic to the prediction. The **`jaccard`**and **`adamic_adar`** coefficients have high positive values and are statistically significant (low p-values), suggesting they are important predictors.
+
+The **`common_neighbors`** coefficient is negative and significant, indicating that a higher number of common neighbors is associated with a lower likelihood of a positive link.
+
+The **`preferential_attachment`** coefficient is not statistically significant (high p-value), suggesting it has a lesser impact on the prediction.
+
+In conclusion, the precision of 0.885 indicates that the model has a high accuracy in predicting positive links.\
+The **`jaccard`** heuristic appears to be the most important, as indicated by its high positive coefficient and statistical significance. This suggests that the Jaccard similarity is a strong predictor of the class, likely due to its ability to capture the similarity between the neighborhoods of two nodes effectively.\
+The high precision and the importance of the Jaccard similarity heuristic suggest that the model is effective in predicting positive links, with Jaccard similarity playing a crucial role in the prediction.
 
 #### 5. Comment on potential ways to improve the link prediction
 
@@ -374,8 +439,8 @@ print(coef(summary(model)))
 
 ```
 
-
 ##### Node embeddings (e.g., Node2Vec or GCNs)
+
 ```{r}
 # Step 1: Compute the adjacency matrix
 adj <- as_adj(g_train, sparse = TRUE)
@@ -420,8 +485,8 @@ ggplot(embedding_df, aes(x = X1, y = X2)) +
 
 ```
 
-
 ##### Temporal dynamics if timestamps were available: calls or sms
+
 ```{r}
 # STEP 1: Load the graph with timestamps (e.g., calls or sms)
 g <- g_calls  # or g_sms
@@ -536,8 +601,8 @@ cat("F1 Score:", round(f1_score, 3), "\n")
 
 ```
 
-
 ##### Community detection features (e.g., are both nodes in the same community?)
+
 ```{r}
 # Convert directed training graph to undirected
 g_train_undirected <- as.undirected(g_train, mode = "collapse")
@@ -573,11 +638,10 @@ summary(model)
 
 ```
 
-
 ## Conclusion
 
 *Some concluding words*
 
 ## References
 
--  Sapiezynski, P., Stopczynski, A., Wind, D. K., Leskovec, J., & Lehmann, S. (2019). Interaction data from the Copenhagen Networks Study [Dataset]. KONECT – The Koblenz Network Collection. https://networks.skewed.de/net/copenhagen
+-   Sapiezynski, P., Stopczynski, A., Wind, D. K., Leskovec, J., & Lehmann, S. (2019). Interaction data from the Copenhagen Networks Study \[Dataset\]. KONECT – The Koblenz Network Collection. https://networks.skewed.de/net/copenhagen
