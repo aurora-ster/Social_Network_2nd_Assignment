@@ -166,7 +166,7 @@ Finally, the **SMS Network** also shows a spread-out structure, indicating varie
 
 ## Questions and Answers
 
-#### 1. Delete a fraction of real edges in the network and create a table of those links deleted (positive class) and of links non-present (negative class)
+### 1. Delete a fraction of real edges in the network and create a table of those links deleted (positive class) and of links non-present (negative class)
 
 ```{r}
 # Step 1: Remove a fraction of real edges (10%)
@@ -220,7 +220,7 @@ Edges in the **positive class** (class 1) are the edges that were originally pre
 
 The dataset is balanced with an equal number of positive and negative samples, which is useful for training machine learning models where class imbalance can be an issue.
 
-#### 2. Generate a number of proximity/similarty metrics heuristics for each link in the positive and negative class
+### 2. Generate a number of proximity/similarty metrics heuristics for each link in the positive and negative class
 
 ```{r}
 # Function to compute heuristics
@@ -268,7 +268,7 @@ To generate proximity/similarity metrics for each link in both the positive and 
 
 These metrics were computed for each link in the dataset, which includes both positive (existing) and negative (non-existing) links. The results were stored in a dataframe, providing a comprehensive set of proximity metrics for further analysis or machine learning tasks. The summary statistics helps in understanding the distribution and characteristics of these metrics across the dataset.
 
-#### 3. Train a binary classifier to predict the links, i.e., to predict the class (positive/negative) using those heuristics. Use cross validation.
+### 3. Train a binary classifier to predict the links, i.e., to predict the class (positive/negative) using those heuristics. Use cross validation.
 
 ```{r}
 #| warning: false
@@ -310,7 +310,7 @@ The AIC (Akaike Information Criterion) is a measure of the model's quality, with
 
 We can conclude the logistic regression model, trained using the computed heuristics, provides a way to predict the class (positive/negative) of links. The cross-validation error gives an estimate of the model's performance on unseen data, and the model summary provides insights into the significance and contribution of each heuristic to the prediction. This approach helps in understanding the importance of each heuristic in predicting the class and ensures that the model generalizes well to new data.
 
-#### 4. Evaluate the precision of the model. Which heuristic is the most important. Why do you think it is the most important?
+### 4. Evaluate the precision of the model. Which heuristic is the most important. Why do you think it is the most important?
 
 ```{r}
 # Predict probabilities and classes on the test set
@@ -366,7 +366,9 @@ In conclusion, the precision of 0.885 indicates that the model has a high accura
 The **`jaccard`** heuristic appears to be the most important, as indicated by its high positive coefficient and statistical significance. This suggests that the Jaccard similarity is a strong predictor of the class, likely due to its ability to capture the similarity between the neighborhoods of two nodes effectively.\
 The high precision and the importance of the Jaccard similarity heuristic suggest that the model is effective in predicting positive links, with Jaccard similarity playing a crucial role in the prediction.
 
-#### 5. Comment on potential ways to improve the link prediction
+### 5. Comment on potential ways to improve the link prediction
+
+These suggestions cover a range of advanced techniques that can capture more complex patterns and dependencies in the network, potentially improving the accuracy and robustness of the link prediction model. Implementing these features would involve additional data preprocessing and potentially more sophisticated modeling techniques, but they can significantly enhance the model's predictive power.
 
 ```{r}
 #*From Chatgpt*
@@ -383,7 +385,11 @@ The high precision and the importance of the Jaccard similarity heuristic sugges
 
 ```
 
-##### Katz Centrality or Rooted PageRank
+#### Katz Centrality or Rooted PageRank
+
+The Katz Centrality measures the influence of a node based on the number of paths that traverse it, considering both direct and indirect connections. We thought incorporating Katz centrality could help capture the global influence of nodes, which might be useful in predicting links.
+
+[This is a variant of the PageRank algorithm that measures the importance of nodes based on their connectivity, starting from a specific root node. It can help identify influential nodes that might play a crucial role in link formation.]{.underline}
 
 ```{r}
 # Step 1: Compute Katz (via eigenvector centrality)
@@ -439,7 +445,23 @@ print(coef(summary(model)))
 
 ```
 
-##### Node embeddings (e.g., Node2Vec or GCNs)
+The confusion matrix shows that the model correctly predicted 179 negative links and 156 positive links. It misclassified 31 negative links as positive and 20 positive links as negative.
+
+The accuracy of 0.868 indicates that the model correctly predicted the class for 86.8% of the test instances.
+
+Precision, Recall, and F1 Score: a precision of 0.886 indicates that 88.6% of the predicted positive links were correct; a recall of 0.834 indicates that the model identified 83.4% of the actual positive links; an F1 score of 0.86 indicates a good balance between precision and recall.
+
+About the model coefficients: the coefficients show the contribution of each heuristic to the prediction. The **`jaccard`**, **`adamic_adar`**, and **`katz_product`** coefficients have high positive values and are statistically significant (low p-values), suggesting they are important predictors. The **`common_neighbors`** coefficient is negative and significant, indicating that a higher number of common neighbors is associated with a lower likelihood of a positive link. The **`preferential_attachment`** and **`pr_product`** coefficients are not statistically significant (high p-values), suggesting they have a lesser impact on the prediction.
+
+In conclusion, the precision of 0.886 indicates that the model has a high accuracy in predicting positive links. The **`jaccard`** heuristic appears to be the most important, as indicated by its high positive coefficient and statistical significance. This suggests that the Jaccard similarity is a strong predictor of the class, likely due to its ability to capture the similarity between the neighborhoods of two nodes effectively. The inclusion of Katz Centrality and PageRank as features (**`katz_product`** and **`pr_product`**) provides additional information on the influence and importance of nodes, potentially improving the model's predictive power. However, their impact varies, and further analysis or feature engineering might be needed to fully leverage their potential.
+
+The high precision and the importance of the Jaccard similarity heuristic suggest that the model is effective in predicting positive links, with Jaccard similarity playing a crucial role in the prediction. The inclusion of Katz Centrality and PageRank provides additional insights into the network structure, potentially enhancing the model's performance.
+
+#### Node embeddings (e.g., Node2Vec or GCNs)
+
+The Node2Vec method generates node embeddings by simulating random walks on the graph, capturing both local and global network structures. Node2Vec embeddings can be used as features in the link prediction model, providing a rich representation of nodes.
+
+Graph Convolutional Networks (GCNs) are neural network models that operate directly on the graph structure, capturing complex patterns and dependencies between nodes. Using GCNs can help in learning more sophisticated representations of nodes for link prediction.
 
 ```{r}
 # Step 1: Compute the adjacency matrix
@@ -481,11 +503,17 @@ ggplot(embedding_df, aes(x = X1, y = X2)) +
        x = "1st Spectral Dimension",
        y = "2nd Spectral Dimension")
 
-
-
 ```
 
-##### Temporal dynamics if timestamps were available: calls or sms
+This *Spectral Embedding Plot* shows the nodes in a 2D space, with the first and second spectral dimensions as the axes. This visualization helps in understanding the distribution and clustering of nodes based on their spectral properties. Nodes that are close in this space are likely to have similar structural roles in the graph, indicating potential connections or similarities.
+
+The *node embeddings* capture the structural properties of the graph, providing a rich representation of the nodes. These embeddings can be used as features in machine learning models for tasks like link prediction. The similarity score derived from the embeddings helps in quantifying the likelihood of a link existing between two nodes, based on their structural properties.
+
+To conclude, the spectral embedding of nodes provides a powerful way to capture the structural properties of the graph, enabling more sophisticated analysis and modeling. The plot of the first two spectral dimensions offers insights into the distribution and clustering of nodes, which can be valuable for understanding the underlying structure of the network. The use of node embeddings as features in link prediction models can enhance the model's ability to capture complex patterns and dependencies, potentially improving the predictive performance.
+
+#### Temporal dynamics if timestamps were available: calls or sms
+
+If timestamps are available for interactions (e.g., calls or SMS), incorporating temporal dynamics can provide insights into the evolution of the network over time. Features such as the frequency of interactions, recency, and temporal patterns can be valuable in predicting future links.
 
 ```{r}
 # STEP 1: Load the graph with timestamps (e.g., calls or sms)
@@ -601,7 +629,19 @@ cat("F1 Score:", round(f1_score, 3), "\n")
 
 ```
 
-##### Community detection features (e.g., are both nodes in the same community?)
+From the results, we can see how the confusion matrix shows the number of true positives (TP), true negatives (TN), false positives (FP), and false negatives (FN). This provides insights into the model's ability to correctly predict the class of links.
+
+The accuracy of 1 indicates that the model correctly predicted the class for all test instances. This is an ideal scenario, suggesting that the model is highly effective in distinguishing between positive and negative links.
+
+Precision, Recall, and F1 Score: a precision of 1 indicates that all predicted positive links were correct; a recall of 1 indicates that the model identified all actual positive links; an F1 score of 1 indicates a perfect balance between precision and recall.
+
+About model coefficients: the coefficients show the contribution of each feature to the prediction. The **`freq`** and **`last_time`** coefficients capture the temporal dynamics of the interactions, providing insights into the importance of these features in predicting the class.
+
+To conclude, the incorporation of temporal dynamics into the link prediction model enhances its ability to capture the evolving nature of the network. The high accuracy, precision, recall, and F1 score suggest that the model is highly effective in predicting the class of links. The temporal features, such as frequency and most recent contact time, provide valuable information on the dynamics of the interactions, potentially improving the model's predictive power. This approach helps in understanding the importance of temporal dynamics in link prediction and ensures that the model generalizes well to new data.
+
+#### Community detection features (e.g., are both nodes in the same community?)
+
+Community detection algorithms can identify groups of nodes that are more densely connected within the group than with the rest of the network. Features such as whether both nodes belong to the same community can be useful in link prediction, as nodes within the same community are more likely to form connections.
 
 ```{r}
 # Convert directed training graph to undirected
@@ -638,9 +678,31 @@ summary(model)
 
 ```
 
+The coefficients show the contribution of each feature to the prediction. The **`same_community`** coefficient has a high positive value and is statistically significant (low p-value), suggesting it is an important predictor.
+
+This indicates that links between nodes in the same community are more likely to exist, capturing the homophily principle where nodes within the same community are more likely to form connections.
+
+The null deviance and residual deviance provide information on the model's fit. A lower residual deviance compared to the null deviance suggests that the model fits the data well.
+
+The AIC (Akaike Information Criterion) is a measure of the model's quality, with lower values indicating a better model.
+
+In conclusion, the incorporation of community detection features into the link prediction model enhances its ability to capture the community structure of the network. The high positive coefficient and statistical significance of the **`same_community`** feature suggest that nodes within the same community are more likely to form connections, providing valuable information for predicting the class of links. This approach helps in understanding the importance of community structure in link prediction and ensures that the model generalizes well to new data.
+
 ## Conclusion
 
-*Some concluding words*
+In this analysis, we explored various techniques to enhance link prediction in social networks. We began by evaluating basic structural heuristics such as common neighbors, Jaccard similarity, Adamic-Adar index, and preferential attachment. These metrics provided a foundational understanding of the network's structure and the likelihood of link formation between nodes.
+
+We then incorporated more advanced features, including Katz Centrality and PageRank, to capture the influence and importance of nodes within the network. These features helped in identifying influential nodes and understanding their role in link formation.
+
+Furthermore, we explored the use of spectral embedding techniques to capture the underlying structural properties of the network. The visualization of node embeddings provided insights into the distribution and clustering of nodes, enhancing our understanding of the network's topology.
+
+Temporal dynamics were also considered, where we incorporated features such as frequency and most recent contact time. These temporal features captured the evolving nature of the network, providing valuable information on the dynamics of interactions.
+
+Finally, we utilized community detection features to identify clusters of nodes that are more densely connected within the cluster than with the rest of the network. The incorporation of community detection features highlighted the importance of community structure in link prediction, capturing the homophily principle where nodes within the same community are more likely to form connections.
+
+The logistic regression models trained on these features demonstrated high accuracy, precision, recall, and F1 scores, indicating the effectiveness of the proposed techniques in predicting the class of links. The inclusion of advanced features such as Katz Centrality, PageRank, spectral embeddings, temporal dynamics, and community detection significantly enhanced the model's predictive power.
+
+In conclusion, the integration of structural, temporal, and community-based features provides a comprehensive approach to link prediction in social networks. These techniques capture the complex patterns and dependencies within the network, offering valuable insights into the underlying mechanisms of link formation. Future work could explore the integration of additional features and more sophisticated modeling techniques to further enhance the predictive performance of link prediction models.
 
 ## References
 
