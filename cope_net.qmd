@@ -42,7 +42,7 @@ g_fb     <- read_graph(paste0(base_path, "fb_friends.gml"), format = "gml")
 g_calls  <- read_graph(paste0(base_path, "calls.gml"), format = "gml")
 g_sms    <- read_graph(paste0(base_path, "sms.gml"), format = "gml")
 
-# View basic info (optional)
+# View basic info 
 g_fb
 g_calls
 g_sms
@@ -53,116 +53,142 @@ We loaded three different networks:
 
 1.  **Facebook Friends Network (`g_fb`)**:
     -   **Type**: Undirected graph (U---)
-    -   **Vertices**: 800
+    -   **Nodes**: 800
     -   **Edges**: 6429 - edges indicate friendships between pairs of vertices
     -   **Description**: This network represents friendships on Facebook. It is undirected, meaning that the friendships are mutual. The graph includes attributes such as citation, description, name, tags, URL, vertex IDs, positions, and edge IDs.
 2.  **Calls Network (`g_calls`)**:
     -   **Type**: Directed graph (D---)
-    -   **Vertices**: 536
+    -   **Nodes**: 536
     -   **Edges**: 3600 - edges indicate calls from one vertex to another
     -   **Description**: This network represents call interactions. It is directed, meaning that the edges have a direction, indicating who called whom. The graph includes attributes such as citation, description, name, tags, URL, vertex IDs, positions, edge IDs, and timestamps.
 3.  **SMS Network (`g_sms`)**:
     -   **Type**: Directed graph (D---)
-    -   **Vertices**: 568
+    -   **Nodes**: 568
     -   **Edges**: 24333 - edges indicate SMS messages sent from one vertex to another
     -   **Description**: This network represents SMS interactions. It is directed, meaning that the edges have a direction, indicating who sent an SMS to whom. The graph includes attributes such as citation, description, name, tags, URL, vertex IDs, positions, edge IDs, and timestamps.
 
-### Manual Similarity Metrics (Exploratory Example)
+### Manual Similarity Metrics 
 
-To demonstrate understanding of the core proximity metrics discussed in class, we apply a function to compute common neighbors, Jaccard similarity, Adamic-Adar, and preferential attachment for two selected nodes across three different networks: Facebook Friends, Calls, and SMS. This function is applied to each network to calculate and display these metrics. Additionally, we visualize the shortest path between the selected nodes in each network, highlighting the nodes and edges involved in the path.
+To demonstrate understanding of the core proximity metrics, we apply a function to compute common neighbors, Jaccard similarity, Adamic-Adar, and preferential attachment for two selected nodes across three different networks: Facebook Friends, Calls, and SMS. This function is applied to each network to calculate and display these metrics. Additionally, we visualize the shortest path between the selected nodes in each network, highlighting the nodes and edges involved in the path.
 
 ```{r}
-# Function to compute similarity metrics for two nodes in any graph
-compute_manual_metrics <- function(g, v1, v2, network_name = "network") {
-  nei_v1 <- neighbors(g, v1)
-  nei_v2 <- neighbors(g, v2)
-  
-  common <- intersect(nei_v1, nei_v2)
-  length_common <- length(common)
-  
-  jaccard <- length(common) / length(union(nei_v1, nei_v2))
-  degrees_common <- degree(g, common)
-  adamic_adar <- sum(1 / log(degrees_common + 1e-10))  # avoid div by 0
-  pref_attach <- degree(g, v1) * degree(g, v2)
-  
-  cat("-----", network_name, "-----\n")
-  cat("Nodes:", v1, "and", v2, "\n")
-  cat("Common Neighbors:", length_common, "\n")
-  cat("Jaccard:", round(jaccard, 3), "\n")
-  cat("Adamic-Adar:", round(adamic_adar, 3), "\n")
-  cat("Preferential Attachment:", pref_attach, "\n\n")
-}
-
-# Choose nodes (same for all networks if valid)
-v1 <- 1
-v2 <- 34
-
-# Run for all 3 networks
-compute_manual_metrics(g_fb, v1, v2, "Facebook Friends")
-compute_manual_metrics(g_calls, v1, v2, "Calls")
-compute_manual_metrics(g_sms, v1, v2, "SMS")
-
-
-# Function to compute metrics and plot graph between v1 and v2
-compute_and_plot <- function(g, v1, v2, title = "Network") {
+link_prediction_demo <- function(g, v1 = 1, v2 = 34, show_steps = FALSE, title = "Network") {
   if (v1 > vcount(g) || v2 > vcount(g)) {
-    cat("Skipping", title, "- nodes out of range\n")
+    cat("⚠️ Skipping", title, "- nodes out of range\n\n")
     return()
   }
-  
-  nei_v1 <- neighbors(g, v1)
-  nei_v2 <- neighbors(g, v2)
-  common <- intersect(nei_v1, nei_v2)
-  
-  jaccard <- length(common) / length(union(nei_v1, nei_v2))
-  degrees_common <- degree(g, common)
-  adamic_adar <- sum(1 / log(degrees_common + 1e-10))
-  pref_attach <- degree(g, v1) * degree(g, v2)
-  
-  cat("-----", title, "-----\n")
-  cat("Nodes:", v1, "and", v2, "\n")
-  cat("Common Neighbors:", length(common), "\n")
-  cat("Jaccard:", round(jaccard, 3), "\n")
-  cat("Adamic-Adar:", round(adamic_adar, 3), "\n")
-  cat("Preferential Attachment:", pref_attach, "\n\n")
-  
-  # Plot
-  ll <- layout_with_fr(g)
-  V(g)$color <- "white"
-  E(g)$color <- "lightgray"
-  V(g)$color[c(v1, v2)] <- "orange"
-  V(g)$color[common] <- "cyan"
-  
-  sp <- shortest_paths(g, from = v1, to = v2)$vpath[[1]]
-  if (length(sp) > 0) {
-    E(g, path = sp)$color <- "red"
+
+  # Check if nodes are connected
+  comps <- components(g, mode = "weak")
+  if (comps$membership[v1] != comps$membership[v2]) {
+    cat("⚠️ Skipping", title, "- nodes are in different components\n\n")
+    return()
   }
-  
-  plot(g,
-       layout = ll,
-       vertex.label = NA,
-       vertex.size = 5,
-       main = paste("Shortest path between", v1, "and", v2, "in", title))
+
+  # Choose layout: KK for small, FR for dense graphs like Facebook
+  set.seed(42)
+  ll <- if (vcount(g) > 100) layout_with_fr(g) else layout_with_kk(g)
+
+  # Compute shortest path
+  sp <- shortest_paths(g, from = v1, to = v2)$vpath[[1]]
+
+  # Find neighbors and shared neighbors
+  nei_1 <- neighbors(g, v1)
+  nei_2 <- neighbors(g, v2)
+  common <- intersect(nei_1, nei_2)
+
+  # Initialize styling
+  V(g)$color <- "white"
+  V(g)$frame.color <- "black"
+  V(g)$size <- 8
+  E(g)$color <- "lightgray"
+  E(g)$width <- 1
+
+  # Highlight neighbors
+  if (length(nei_1) > 0) V(g)[nei_1]$color <- "gray80"
+  if (length(nei_2) > 0) V(g)[nei_2]$color <- "gray80"
+  if (length(common) > 0) V(g)[common]$color <- "deepskyblue"
+
+  # Highlight focal nodes
+  V(g)[c(v1, v2)]$color <- "darkorange2"
+  V(g)[c(v1, v2)]$size <- 12
+  V(g)[c(v1, v2)]$frame.color <- "black"
+
+
+  # Highlight path
+  if (length(sp) > 1) {
+    path_edges <- E(g, path = sp)
+    E(g)[path_edges]$color <- "red"
+    E(g)[path_edges]$width <- 2
+  }
+
+  # Plot
+  plot(
+    g,
+    layout = ll,
+    vertex.label = if (vcount(g) > 100) NA else V(g),
+    vertex.label.color = "blue",
+    vertex.label.cex = 1,
+    vertex.label.family = "sans",
+    vertex.size = V(g)$size,
+    edge.color = E(g)$color,
+    edge.width = E(g)$width,
+    edge.arrow.size = if (is.directed(g)) 0.3 else 0,
+    edge.curved = if (is.directed(g)) 0.2 else FALSE,
+    main = paste("Link prediction example in", title)
+  )
+
+  # --- Metrics Output ---
+  cat("\n----", title, "----\n")
+  cat("Nodes:", v1, "&", v2, "\n")
+  cat("Common Neighbors:", length(common), "\n")
+
+  # Jaccard
+  jaccard <- length(common) / length(union(nei_1, nei_2))
+  cat("Jaccard:", round(jaccard, 3), "\n")
+
+  # Adamic-Adar (manual)
+  deg_common <- degree(g, common)
+  adamic_adar <- if (length(deg_common) > 0) sum(1 / log(deg_common + 1e-10)) else 0
+  cat("Adamic-Adar (manual):", round(adamic_adar, 3), "\n")
+
+  # Preferential Attachment
+  pref_attach <- degree(g, v1) * degree(g, v2)
+  cat("Preferential Attachment:", pref_attach, "\n")
+
+  # igraph built-in metrics (if undirected)
+  if (!is.directed(g)) {
+    cat("-- Built-in Similarity --\n")
+    sim_jac <- similarity.jaccard(g, c(v1, v2))
+    cat("Jaccard (igraph):", round(sim_jac[1, 2], 3), "\n")
+    sim_aa <- similarity.invlogweighted(g, v1)[v2]
+    cat("Adamic-Adar (igraph):", round(sim_aa, 3), "\n")
+  }
+
+  cat("\n")
 }
 
-# Run for all 3 networks
-v1 <- 1
-v2 <- 34
+link_prediction_demo(g_fb, 1, 34, title = "Copenhagen Facebook")
+link_prediction_demo(g_calls, 1, 34, title = "Copenhagen Calls")
+link_prediction_demo(g_sms, 1, 34, title = "Copenhagen SMS")
 
-compute_and_plot(g_fb, v1, v2, "Facebook Friends")
-compute_and_plot(g_calls, v1, v2, "Calls")
-compute_and_plot(g_sms, v1, v2, "SMS")
 
 
 ```
 
-These visualizations help in understanding the structural properties of each network and the relationships between the selected nodes.
+These visualizations provide a comparative view of how nodes interact in each network and how structurally embedded the relationship between nodes 1 and 34 is across different interaction types.
 
-The **Facebook Friends Network** show a dense cluster of nodes, indicating a highly interconnected network. [The shortest path between nodes 1 and 34 is highlighted in red, showing the direct connections between these nodes]{.underline}. Nodes 1 and 34 are colored in orange, and their common neighbors are colored in cyan, providing a visual representation of their proximity within the network.
+**Facebook Friends Network**
 
-The **Calls Network** graph appears more spread out compared to the Facebook Friends network, indicating a less dense connectivity. [The shortest path between nodes 1 and 34 is again highlighted in red.]{.underline} The orange and cyan nodes represent the selected nodes and their common neighbors, respectively, showing their interaction within the call network.
+The Facebook graph is highly dense, with a large number of nodes forming a tight, compact structure. The shortest path between nodes 1 and 34 is drawn in red, and although the density makes individual edges harder to visually isolate, the orange-highlighted nodes help locate the focal points quickly. Common neighbors (previously cyan) are not distinctly visible here due to the dense node overlap and simplified color scheme, but the visualization effectively communicates the network's high clustering and cohesion.
 
-Finally, the **SMS Network** also shows a spread-out structure, indicating varied connectivity. [The shortest path between nodes 1 and 34 is highlighted in red.]{.underline} The orange and cyan nodes indicate the selected nodes and their common neighbors, illustrating their proximity in the SMS network.
+**Calls Network**
+
+The Calls graph is more interpretable. Nodes 1 and 34 are clearly visible in orange, and the shortest path linking them is drawn in red. The layout reveals a sparser, hub-like topology, with individual connections more readable. Node labels are retained to support traceability. This structure suggests more selective interaction patterns, consistent with how people place calls within a limited circle.
+
+**SMS Network**
+
+The SMS network visually resembles the Calls graph in its structure and sparsity. Nodes 1 and 34 are again highlighted in orange, and the red path shows the shortest communication chain between them. Node labeling and layout make it easier to spot neighbors and local bridges, providing insight into how individuals are indirectly connected via SMS exchanges.
 
 ## Questions and Answers
 
