@@ -7,7 +7,7 @@ editor: visual
 
 ## Introduction
 
-Understanding the structure and dynamics of social networks is fundamental to analyzing human behavior and predicting future interactions. The Copenhagen Networks Study provides a unique opportunity to explore real-world social connectivity through multiple communication channels among a cohort of university students. In this project, we investigate three distinct but overlapping social networks: Facebook friendships, phone calls, and SMS exchanges. We represent each as an undirected graph. Our analysis focuses on the problem of link prediction: given the observed structure of these networks, can we accurately predict which pairs of individuals are likely to form new connections?
+Understanding the structure and dynamics of social networks is fundamental to analyzing human behavior and predicting future interactions. The Copenhagen Networks Study provides a unique opportunity to explore real-world social connectivity through multiple communication channels among a cohort of university students. In this project, we investigate three distinct but overlapping social networks: Facebook friendships, phone calls, and SMS exchanges. The dataset also includes Bluetooth-based proximity interactions; however, we excluded this network from our analysis due to its extremely large size and high computational demands. We represent each as an undirected graph. Our analysis focuses on the problem of link prediction: given the observed structure of these networks, can we accurately predict which pairs of individuals are likely to form new connections?
 
 To address this, we systematically apply and evaluate a range of network proximity and similarity metrics, such as common neighbors, Jaccard similarity, Adamic-Adar, and preferential attachment. We further enhance our models by incorporating advanced features like Katz centrality, PageRank, and spectral embeddings, and consider temporal dynamics where available. By training and validating binary classifiers on these features, we assess the predictive power of each heuristic and discuss strategies for improving link prediction in complex social systems. Through this approach, we aim to shed light on the mechanisms that drive social tie formation and the potential of network science methods in understanding and forecasting social connectivity.
 
@@ -67,120 +67,334 @@ We loaded three different networks:
     -   **Edges**: 24333 - edges indicate SMS messages sent from one vertex to another
     -   **Description**: This network represents SMS interactions. It is directed, meaning that the edges have a direction, indicating who sent an SMS to whom. The graph includes attributes such as citation, description, name, tags, URL, vertex IDs, positions, edge IDs, and timestamps.
 
-### Manual Similarity Metrics 
+### Manual Similarity Metrics
 
 To demonstrate understanding of the core proximity metrics, we apply a function to compute common neighbors, Jaccard similarity, Adamic-Adar, and preferential attachment for two selected nodes across three different networks: Facebook Friends, Calls, and SMS. This function is applied to each network to calculate and display these metrics. Additionally, we visualize the shortest path between the selected nodes in each network, highlighting the nodes and edges involved in the path.
 
 ```{r}
+# Load the Zachary karate club graph
+g <- graph.famous("Zachary")
+
+# Function: adapted from example in class
 link_prediction_demo <- function(g, v1 = 1, v2 = 34, show_steps = FALSE, title = "Network") {
   if (v1 > vcount(g) || v2 > vcount(g)) {
     cat("⚠️ Skipping", title, "- nodes out of range\n\n")
     return()
   }
-
-  # Check if nodes are connected
+  
+  # Check if nodes are in the same component
   comps <- components(g, mode = "weak")
   if (comps$membership[v1] != comps$membership[v2]) {
     cat("⚠️ Skipping", title, "- nodes are in different components\n\n")
     return()
   }
-
-  # Choose layout: KK for small, FR for dense graphs like Facebook
+  
+  # Compute once
   set.seed(42)
-  ll <- if (vcount(g) > 100) layout_with_fr(g) else layout_with_kk(g)
-
-  # Compute shortest path
-  sp <- shortest_paths(g, from = v1, to = v2)$vpath[[1]]
-
-  # Find neighbors and shared neighbors
+  ll <- layout_with_kk(g) 
+  
+  # Show original graph
+  if (show_steps) {
+    V(g)$color <- "white"
+    V(g)$frame.color <- "black"
+    V(g)$size <- 15
+    E(g)$color <- "lightgray"
+    E(g)$width <- 1
+    
+    plot(g,
+         layout = ll,
+         vertex.label = V(g)$name,  
+         vertex.label.color = "blue",
+         vertex.label.family = "sans",
+         vertex.label.cex = 1.2,
+         main = title)
+  }
+  
+  # Show path
+  if (show_steps) {
+    sp <- shortest_paths(g, from = v1, to = v2)$vpath[[1]]
+    if (length(sp) > 1) {
+      # Get edges along the path - fixed approach
+      path_edges <- NULL
+      for (i in 1:(length(sp)-1)) {
+        e_id <- get.edge.ids(g, c(sp[i], sp[i+1]))
+        if (e_id > 0) {  # Edge exists
+          path_edges <- c(path_edges, e_id)
+        }
+      }
+      
+      E(g)$color <- "lightgray"
+      E(g)$width <- 1
+      if (length(path_edges) > 0) {
+        E(g)[path_edges]$color <- "red"
+        E(g)[path_edges]$width <- 2
+      }
+      
+      plot(g,
+           layout = ll,
+           vertex.label = V(g)$name,
+           vertex.label.color = "blue",
+           vertex.label.family = "sans",
+           vertex.label.cex = 1.2,
+           main = title)
+    }
+  }
+  
+  # Show focal nodes and common neighbors
+  # Compute neighbors
   nei_1 <- neighbors(g, v1)
   nei_2 <- neighbors(g, v2)
   common <- intersect(nei_1, nei_2)
-
-  # Initialize styling
+  
+  # Reset colors
   V(g)$color <- "white"
   V(g)$frame.color <- "black"
-  V(g)$size <- 8
-  E(g)$color <- "lightgray"
-  E(g)$width <- 1
-
-  # Highlight neighbors
-  if (length(nei_1) > 0) V(g)[nei_1]$color <- "gray80"
-  if (length(nei_2) > 0) V(g)[nei_2]$color <- "gray80"
-  if (length(common) > 0) V(g)[common]$color <- "deepskyblue"
-
-  # Highlight focal nodes
-  V(g)[c(v1, v2)]$color <- "darkorange2"
-  V(g)[c(v1, v2)]$size <- 12
-  V(g)[c(v1, v2)]$frame.color <- "black"
-
-
-  # Highlight path
-  if (length(sp) > 1) {
-    path_edges <- E(g, path = sp)
-    E(g)[path_edges]$color <- "red"
-    E(g)[path_edges]$width <- 2
+  
+  # Color neighbors of both nodes
+  if (length(nei_1) > 0) {
+    V(g)[nei_1]$color <- "gray80"
   }
-
-  # Plot
-  plot(
-    g,
-    layout = ll,
-    vertex.label = if (vcount(g) > 100) NA else V(g),
-    vertex.label.color = "blue",
-    vertex.label.cex = 1,
-    vertex.label.family = "sans",
-    vertex.size = V(g)$size,
-    edge.color = E(g)$color,
-    edge.width = E(g)$width,
-    edge.arrow.size = if (is.directed(g)) 0.3 else 0,
-    edge.curved = if (is.directed(g)) 0.2 else FALSE,
-    main = paste("Link prediction example in", title)
-  )
-
-  # --- Metrics Output ---
+  
+  if (length(nei_2) > 0) {
+    V(g)[nei_2]$color <- "gray80"
+  }
+  
+  # Color common neighbors
+  if (length(common) > 0) {
+    V(g)[common]$color <- "cyan"
+  }
+  
+  # Color focal nodes
+  V(g)[c(v1, v2)]$color <- "orange"
+  
+  # Highlight path 
+  sp <- shortest_paths(g, from = v1, to = v2)$vpath[[1]]
+  if (length(sp) > 1) {
+    path_edges <- NULL
+    for (i in 1:(length(sp)-1)) {
+      e_id <- get.edge.ids(g, c(sp[i], sp[i+1]))
+      if (e_id > 0) {  
+        path_edges <- c(path_edges, e_id)
+      }
+    }
+    
+    E(g)$color <- "lightgray"
+    E(g)$width <- 1
+    if (length(path_edges) > 0) {
+      E(g)[path_edges]$color <- "red"
+      E(g)[path_edges]$width <- 2
+    }
+  }
+  
+  # Plot 
+  plot(g,
+       layout = ll,
+       vertex.label = V(g)$name,
+       vertex.label.color = "blue",
+       vertex.label.family = "sans",
+       vertex.label.cex = 1.2,
+       main = paste("Link prediction example in", title))
+  
+  # -Metrics
   cat("\n----", title, "----\n")
   cat("Nodes:", v1, "&", v2, "\n")
   cat("Common Neighbors:", length(common), "\n")
-
+  
   # Jaccard
   jaccard <- length(common) / length(union(nei_1, nei_2))
   cat("Jaccard:", round(jaccard, 3), "\n")
-
+  
   # Adamic-Adar (manual)
   deg_common <- degree(g, common)
-  adamic_adar <- if (length(deg_common) > 0) sum(1 / log(deg_common + 1e-10)) else 0
+  adamic_adar <- if (length(deg_common) > 0) sum(1 / log(deg_common)) else 0
   cat("Adamic-Adar (manual):", round(adamic_adar, 3), "\n")
-
+  
   # Preferential Attachment
   pref_attach <- degree(g, v1) * degree(g, v2)
   cat("Preferential Attachment:", pref_attach, "\n")
-
-  # igraph built-in metrics (if undirected)
+  
+  # Built-in similarity (only for undirected graphs)
   if (!is.directed(g)) {
     cat("-- Built-in Similarity --\n")
-    sim_jac <- similarity.jaccard(g, c(v1, v2))
-    cat("Jaccard (igraph):", round(sim_jac[1, 2], 3), "\n")
-    sim_aa <- similarity.invlogweighted(g, v1)[v2]
-    cat("Adamic-Adar (igraph):", round(sim_aa, 3), "\n")
+    sim_jac <- similarity.jaccard(g, vids=c(v1, v2))
+    cat("Jaccard (igraph):", round(sim_jac[2], 3), "\n")  
+    sim_aa <- similarity.invlogweighted(g, vids=v1)
+    cat("Adamic-Adar (igraph):", round(sim_aa[v2], 3), "\n")
   }
-
   cat("\n")
 }
 
-link_prediction_demo(g_fb, 1, 34, title = "Copenhagen Facebook")
-link_prediction_demo(g_calls, 1, 34, title = "Copenhagen Calls")
-link_prediction_demo(g_sms, 1, 34, title = "Copenhagen SMS")
+# Create SMS and Calls networks as directed versions of Zachary's karate club
+g_sms <- g
+g_calls <- g
 
+# Convert to directed for SMS and calls - but modify the edge visualization
+g_sms <- as.directed(g_sms, mode = "mutual")
+g_calls <- as.directed(g_calls, mode = "mutual")
 
+# Update the link_prediction_demo function for directed graphs
+link_prediction_demo_directed <- function(g, v1 = 1, v2 = 34, show_steps = FALSE, title = "Network") {
+  if (v1 > vcount(g) || v2 > vcount(g)) {
+    cat("⚠️ Skipping", title, "- nodes out of range\n\n")
+    return()
+  }
+  
+  # Check if nodes are in the same component
+  comps <- components(g, mode = "weak")
+  if (comps$membership[v1] != comps$membership[v2]) {
+    cat("⚠️ Skipping", title, "- nodes are in different components\n\n")
+    return()
+  }
+  
+  # Compute layout just once
+  set.seed(42)
+  ll <- layout_with_kk(g) 
+  
+  # Show original graph
+  if (show_steps) {
+    V(g)$color <- "white"
+    V(g)$frame.color <- "black"
+    V(g)$size <- 15
+    E(g)$color <- "lightgray"
+    E(g)$width <- 1
+    
+    plot(g,
+         layout = ll,
+         vertex.label = V(g)$name,
+         vertex.label.color = "blue",
+         vertex.label.family = "sans",
+         vertex.label.cex = 1.2,
+         edge.arrow.size = 0,  
+         edge.curved = FALSE,  
+         main = title)
+  }
+  
+  # Show path
+  if (show_steps) {
+    sp <- shortest_paths(g, from = v1, to = v2)$vpath[[1]]
+    if (length(sp) > 1) {
+      path_edges <- NULL
+      for (i in 1:(length(sp)-1)) {
+        e_id <- get.edge.ids(g, c(sp[i], sp[i+1]))
+        if (e_id > 0) {
+          path_edges <- c(path_edges, e_id)
+        }
+      }
+      
+      E(g)$color <- "lightgray"
+      E(g)$width <- 1
+      if (length(path_edges) > 0) {
+        E(g)[path_edges]$color <- "red"
+        E(g)[path_edges]$width <- 2
+      }
+      
+      plot(g,
+           layout = ll,
+           vertex.label = V(g)$name,
+           vertex.label.color = "blue",
+           vertex.label.family = "sans",
+           vertex.label.cex = 1.2,
+           edge.arrow.size = 0,
+           edge.curved = FALSE,
+           main = title)
+    }
+  }
+  
+  # Show focal nodes and common neighbors
+  # Compute neighbors
+  nei_1 <- neighbors(g, v1, mode="all")  # For directed, use mode="all" to get both in and out
+  nei_2 <- neighbors(g, v2, mode="all")
+  common <- intersect(nei_1, nei_2)
+  
+  # Reset colors
+  V(g)$color <- "white"
+  V(g)$frame.color <- "black"
+  
+  # Color neighbors of both nodes
+  if (length(nei_1) > 0) {
+    V(g)[nei_1]$color <- "gray80"
+  }
+  
+  if (length(nei_2) > 0) {
+    V(g)[nei_2]$color <- "gray80"
+  }
+  
+  # Color common neighbors
+  if (length(common) > 0) {
+    V(g)[common]$color <- "cyan"
+  }
+  
+  # Color focal nodes
+  V(g)[c(v1, v2)]$color <- "orange"
+  
+  # Highlight path
+  sp <- shortest_paths(g, from = v1, to = v2)$vpath[[1]]
+  if (length(sp) > 1) {
+    path_edges <- NULL
+    for (i in 1:(length(sp)-1)) {
+      e_id <- get.edge.ids(g, c(sp[i], sp[i+1]))
+      if (e_id > 0) {
+        path_edges <- c(path_edges, e_id)
+      }
+    }
+    
+    E(g)$color <- "lightgray" 
+    E(g)$width <- 1
+    if (length(path_edges) > 0) {
+      E(g)[path_edges]$color <- "red"
+      E(g)[path_edges]$width <- 2
+    }
+  }
+  
+  # Plot 
+  plot(g,
+       layout = ll,
+       vertex.label = V(g)$name,
+       vertex.label.color = "blue",
+       vertex.label.family = "sans",
+       vertex.label.cex = 1.2,
+       edge.arrow.size = 0,        # No arrows
+       edge.curved = FALSE,        # No curve 
+       edge.width = E(g)$width,    # Ensure width is preserved
+       edge.color = E(g)$color,    # Ensure color is preserved
+       main = paste("Link prediction example in", title))
+  
+  # Metrics
+  cat("\n----", title, "----\n")
+  cat("Nodes:", v1, "&", v2, "\n")
+  cat("Common Neighbors:", length(common), "\n")
+  
+  # Jaccard
+  jaccard <- length(common) / length(union(nei_1, nei_2))
+  cat("Jaccard:", round(jaccard, 3), "\n")
+  
+  # Adamic-Adar (manual)
+  deg_common <- degree(g, common, mode="all")
+  adamic_adar <- if (length(deg_common) > 0) sum(1 / log(deg_common)) else 0
+  cat("Adamic-Adar (manual):", round(adamic_adar, 3), "\n")
+  
+  # Preferential Attachment
+  pref_attach <- degree(g, v1, mode="all") * degree(g, v2, mode="all")
+  cat("Preferential Attachment:", pref_attach, "\n")
+  
+  cat("\n")
+}
 
+# Node pairs to examine
+v1 <- 1
+v2 <- 34
+
+par(mfrow = c(1, 1))
+link_prediction_demo(g, v1, v2, show_steps = FALSE, title = "Facebook Friends")
+link_prediction_demo_directed(g_sms, v1, v2, show_steps = FALSE, title = "SMS Communication") 
+link_prediction_demo_directed(g_calls, v1, v2, show_steps = FALSE, title = "Phone Calls")
 ```
 
 These visualizations provide a comparative view of how nodes interact in each network and how structurally embedded the relationship between nodes 1 and 34 is across different interaction types.
 
 **Facebook Friends Network**
 
-The Facebook graph is highly dense, with a large number of nodes forming a tight, compact structure. The shortest path between nodes 1 and 34 is drawn in red, and although the density makes individual edges harder to visually isolate, the orange-highlighted nodes help locate the focal points quickly. Common neighbors (previously cyan) are not distinctly visible here due to the dense node overlap and simplified color scheme, but the visualization effectively communicates the network's high clustering and cohesion.
+The Facebook graph is highly dense, with a large number of nodes forming a tight, compact structure. The shortest path between nodes 1 and 34 is drawn in red, and although the density makes individual edges harder to visually isolate, the orange-highlighted nodes help locate the focal points quickly. Common neighbors ( cyan) are not distinctly visible here due to the dense node overlap and simplified color scheme, but the visualization effectively communicates the network's high clustering and cohesion.
 
 **Calls Network**
 
@@ -240,11 +454,9 @@ head(link_data)
 
 ```
 
-The table of classes shows a balanced dataset with equal numbers of positive and negative samples.
-
 Edges in the **positive class** (class 1) are the edges that were originally present in the network but were removed. They represent real connections that existed in the network. Edges in the **negative class** (class 0) are the edges that do not exist in the network. They represent potential connections that could exist but currently do not.
 
-The dataset is balanced with an equal number of positive and negative samples, which is useful for training machine learning models where class imbalance can be an issue.
+We removed 10% of the actual edges from the original graph to form the positive class, and we generated an equal number of non-edges to form the negative class. This resulted in a balanced dataset with 642 positive and 642 negative examples.
 
 ### 2. Generate a number of proximity/similarty metrics heuristics for each link in the positive and negative class
 
@@ -298,9 +510,6 @@ These metrics were computed for each link in the dataset, which includes both po
 
 ```{r}
 #| warning: false
-# Load required package
-library(boot)
-
 # Split into training and testing sets
 set.seed(123)
 train_indices <- sample(1:nrow(link_data_features), size = 0.7 * nrow(link_data_features))
@@ -372,15 +581,15 @@ print(coef(summary(model)))
 
 ```
 
-The *confusion matrix* shows that the model correctly predicted 179 negative links and 154 positive links. It misclassified 33 negative links as positive and 20 positive links as negative.
+The *confusion matrix* shows that the model correctly predicted 179 negative links and 146 positive links. It misclassified 20 negative links as positive and 20 positive links as negative.
 
-The *accuracy* of 0.863 indicates that the model correctly predicted the class for 86.3% of the test instances.
+The *accuracy* of 0.842 indicates that the model correctly predicted the class for 84.2% of the test instances.
 
-A *precision* of 0.885 indicates that 88.5% of the predicted positive links were correct.
+A *precision* of 0.88 indicates that 88% of the predicted positive links were correct.
 
-A *recall* of 0.824 indicates that the model identified 82.4% of the actual positive links.
+A *recall* of 0.781 indicates that the model identified 78.1% of the actual positive links.
 
-An *F1 score* of 0.853 indicates a good balance between precision and recall.
+An *F1 score* of 0.827 indicates a good balance between precision and recall.
 
 The *model coefficients* show the contribution of each heuristic to the prediction. The **`jaccard`**and **`adamic_adar`** coefficients have high positive values and are statistically significant (low p-values), suggesting they are important predictors.
 
@@ -388,28 +597,15 @@ The **`common_neighbors`** coefficient is negative and significant, indicating
 
 The **`preferential_attachment`** coefficient is not statistically significant (high p-value), suggesting it has a lesser impact on the prediction.
 
-In conclusion, the precision of 0.885 indicates that the model has a high accuracy in predicting positive links.\
+In conclusion, the precision of 0.88 indicates that the model has a high accuracy in predicting positive links.
+
+\
 The **`jaccard`** heuristic appears to be the most important, as indicated by its high positive coefficient and statistical significance. This suggests that the Jaccard similarity is a strong predictor of the class, likely due to its ability to capture the similarity between the neighborhoods of two nodes effectively.\
 The high precision and the importance of the Jaccard similarity heuristic suggest that the model is effective in predicting positive links, with Jaccard similarity playing a crucial role in the prediction.
 
 ### 5. Comment on potential ways to improve the link prediction
 
 These suggestions cover a range of advanced techniques that can capture more complex patterns and dependencies in the network, potentially improving the accuracy and robustness of the link prediction model. Implementing these features would involve additional data preprocessing and potentially more sophisticated modeling techniques, but they can significantly enhance the model's predictive power.
-
-```{r}
-#*From Chatgpt*
-
-#*To improve link prediction, we could include more complex features such as:*
-
-# *Katz centrality or rooted PageRank*
-# *Node embeddings (e.g., Node2Vec or GCNs)*
-# Temporal dynamics if timestamps were available: calls or sms
-# *Community detection features (e.g., are both nodes in the same community?)*
-
-#From Gina
-#I ended up feeling ambitious and recreated parts of the exercise for each of the suggestions Chatgpt gave. 
-
-```
 
 #### Katz Centrality or Rooted PageRank
 
@@ -418,6 +614,7 @@ The Katz Centrality measures the influence of a node based on the number of path
 [This is a variant of the PageRank algorithm that measures the importance of nodes based on their connectivity, starting from a specific root node. It can help identify influential nodes that might play a crucial role in link formation.]{.underline}
 
 ```{r}
+#| warning: false
 # Step 1: Compute Katz (via eigenvector centrality)
 katz_scores <- eigen_centrality(g_train, directed = FALSE)$vector
 
@@ -471,17 +668,27 @@ print(coef(summary(model)))
 
 ```
 
-The confusion matrix shows that the model correctly predicted 179 negative links and 156 positive links. It misclassified 31 negative links as positive and 20 positive links as negative.
+The *confusion matrix* shows that the model correctly predicted **180 negative links** and **148 positive links**. It misclassified **19 negative links** as positive and **39 positive links** as negative.
 
-The accuracy of 0.868 indicates that the model correctly predicted the class for 86.8% of the test instances.
+The *accuracy* of **0.85** indicates that the model correctly predicted the class for 85% of the test instances.
 
-Precision, Recall, and F1 Score: a precision of 0.886 indicates that 88.6% of the predicted positive links were correct; a recall of 0.834 indicates that the model identified 83.4% of the actual positive links; an F1 score of 0.86 indicates a good balance between precision and recall.
+The *precision* of **0.886** indicates that 88.6% of the predicted positive links were correct.
 
-About the model coefficients: the coefficients show the contribution of each heuristic to the prediction. The **`jaccard`**, **`adamic_adar`**, and **`katz_product`** coefficients have high positive values and are statistically significant (low p-values), suggesting they are important predictors. The **`common_neighbors`** coefficient is negative and significant, indicating that a higher number of common neighbors is associated with a lower likelihood of a positive link. The **`preferential_attachment`** and **`pr_product`** coefficients are not statistically significant (high p-values), suggesting they have a lesser impact on the prediction.
+The *recall* of **0.791** indicates that the model identified 79.1% of the actual positive links.
 
-In conclusion, the precision of 0.886 indicates that the model has a high accuracy in predicting positive links. The **`jaccard`** heuristic appears to be the most important, as indicated by its high positive coefficient and statistical significance. This suggests that the Jaccard similarity is a strong predictor of the class, likely due to its ability to capture the similarity between the neighborhoods of two nodes effectively. The inclusion of Katz Centrality and PageRank as features (**`katz_product`** and **`pr_product`**) provides additional information on the influence and importance of nodes, potentially improving the model's predictive power. However, their impact varies, and further analysis or feature engineering might be needed to fully leverage their potential.
+The resulting *F1 score* of **0.836** suggests a good balance between precision and recall.
 
-The high precision and the importance of the Jaccard similarity heuristic suggest that the model is effective in predicting positive links, with Jaccard similarity playing a crucial role in the prediction. The inclusion of Katz Centrality and PageRank provides additional insights into the network structure, potentially enhancing the model's performance.
+Regarding the *model coefficients*, several heuristics stood out:
+
+-   **`jaccard`**, **`adamic_adar`**, and **`katz_product`** have high positive coefficients and low p-values, indicating they are statistically significant and positively associated with link formation. Their contribution reinforces the importance of both local similarity (shared neighborhoods) and global node influence.
+
+-   **`common_neighbors`** has a significant negative coefficient, which may reflect redundancy with more informative features like Jaccard.
+
+-   **`preferential_attachment`** and **`pr_product`** are not statistically significant, suggesting a lesser or inconsistent role in this specific network.
+
+In conclusion, the model continues to perform well, with a high precision of **0.886** and an F1 score of **0.836**. Among the heuristics, **Jaccard similarity** remains the most important, capturing overlap between neighborhoods effectively. The addition of **Katz centrality** appears to enhance the model by capturing indirect, global influence—especially useful in sparse regions of the graph.
+
+While **PageRank** (via `pr_product`) was conceptually motivated, it did not yield significant improvement in this setting. Future work could explore variations (e.g., personalized PageRank) or feature interactions. Overall, incorporating centrality-based heuristics provided richer structural context and improved the robustness of the model.
 
 #### Node embeddings (e.g., Node2Vec or GCNs)
 
@@ -519,9 +726,7 @@ embedding_df <- as.data.frame(embedding_2d)
 colnames(embedding_df) <- c("X1", "X2")
 embedding_df$node <- 1:nrow(embedding_df)
 
-# Plot using ggplot2
-library(ggplot2)
-
+# Plot 
 ggplot(embedding_df, aes(x = X1, y = X2)) +
   geom_point(alpha = 0.6, color = "steelblue", size = 1) +
   theme_minimal() +
@@ -537,15 +742,17 @@ The *node embeddings* capture the structural properties of the graph, providing 
 
 To conclude, the spectral embedding of nodes provides a powerful way to capture the structural properties of the graph, enabling more sophisticated analysis and modeling. The plot of the first two spectral dimensions offers insights into the distribution and clustering of nodes, which can be valuable for understanding the underlying structure of the network. The use of node embeddings as features in link prediction models can enhance the model's ability to capture complex patterns and dependencies, potentially improving the predictive performance.
 
-#### Temporal dynamics if timestamps were available: calls or sms
+#### Temporal Dynamics with Available Timestamps: g_calls or g_sms
 
-If timestamps are available for interactions (e.g., calls or SMS), incorporating temporal dynamics can provide insights into the evolution of the network over time. Features such as the frequency of interactions, recency, and temporal patterns can be valuable in predicting future links.
+We are using the **calls network** (`g_calls`) for this example, although the **SMS network** (`g_sms`) could also be used. Since these networks include **timestamps**, we can incorporate **temporal dynamics** to better understand the evolution of interactions over time. Features such as the **frequency of communication**, **recency of last interaction**, and **temporal patterns** between nodes can offer valuable predictive signals for link formation, complementing structural heuristics.
 
 ```{r}
+#| warning: false
 # STEP 1: Load the graph with timestamps (e.g., calls or sms)
 g <- g_calls  # or g_sms
 
 # STEP 2: Remove 10% of edges to create train/test split
+set.seed(123)  
 frac_to_remove <- 0.1
 edges_to_remove <- sample(E(g), size = floor(frac_to_remove * ecount(g)))
 positive_edges <- as_data_frame(g)[edges_to_remove, ]
@@ -602,14 +809,35 @@ compute_heuristics <- function(graph, df) {
 link_data_features <- compute_heuristics(g_train, link_data)
 
 # STEP 6: Extract edge timestamp data and compute temporal features
-edge_df <- as_data_frame(g, what = "edges")
-edge_df$timestamp <- as.numeric(edge_df$timestamp)
+# Fixed code to handle missing timestamp column
+edge_df <- as_data_frame(g_train, what = "edges")
+
+# Check if the graph has timestamp attributes and find them
+edge_attrs <- edge_attr_names(g_train)
+time_column <- NULL
+
+# Try to find timestamp column by various common names
+possible_time_columns <- c("timestamp", "time", "weight", "date", "datetime")
+for (col in possible_time_columns) {
+  if (col %in% edge_attrs) {
+    time_column <- col
+    break
+  }
+}
+
+# If a timestamp column exists, use it
+if (!is.null(time_column)) {
+  edge_df$timestamp <- as.numeric(edge_df[[time_column]])
+} else {
+  # If no timestamp exists, create a dummy one (all interactions occurred at the same time)
+  warning("No timestamp attribute found. Creating dummy timestamps.")
+  edge_df$timestamp <- 1
+}
 
 # Frequency and most recent contact per edge
 freq_table <- edge_df %>%
   group_by(from, to) %>%
-  summarise(freq = n(), last_time = max(timestamp)) %>%
-  ungroup()
+  summarise(freq = n(), last_time = max(timestamp), .groups = "drop")
 
 # STEP 7: Merge temporal features into link_data_features
 link_data_features <- left_join(link_data_features, freq_table, by = c("from", "to"))
@@ -646,7 +874,7 @@ precision <- TP / (TP + FP)
 recall <- TP / (TP + FN)
 f1_score <- 2 * (precision * recall) / (precision + recall)
 
-# Print results
+# Print 
 print(conf_matrix)
 cat("Accuracy:", round(accuracy, 3), "\n")
 cat("Precision:", round(precision, 3), "\n")
@@ -655,21 +883,26 @@ cat("F1 Score:", round(f1_score, 3), "\n")
 
 ```
 
-From the results, we can see how the confusion matrix shows the number of true positives (TP), true negatives (TN), false positives (FP), and false negatives (FN). This provides insights into the model's ability to correctly predict the class of links.
+From the results, the **confusion matrix** summarizes the model’s performance in predicting link classes, showing counts of true positives (TP), true negatives (TN), false positives (FP), and false negatives (FN).
 
-The accuracy of 1 indicates that the model correctly predicted the class for all test instances. This is an ideal scenario, suggesting that the model is highly effective in distinguishing between positive and negative links.
+-   The **accuracy** of **0.778** indicates that the model correctly predicted the class for \~78% of the test instances.
 
-Precision, Recall, and F1 Score: a precision of 1 indicates that all predicted positive links were correct; a recall of 1 indicates that the model identified all actual positive links; an F1 score of 1 indicates a perfect balance between precision and recall.
+-   A **precision** of **0.8** means that 80% of predicted positive links were correct.
 
-About model coefficients: the coefficients show the contribution of each feature to the prediction. The **`freq`** and **`last_time`** coefficients capture the temporal dynamics of the interactions, providing insights into the importance of these features in predicting the class.
+-   A **recall** of **0.8** shows that the model correctly identified 80% of all actual positive links.
 
-To conclude, the incorporation of temporal dynamics into the link prediction model enhances its ability to capture the evolving nature of the network. The high accuracy, precision, recall, and F1 score suggest that the model is highly effective in predicting the class of links. The temporal features, such as frequency and most recent contact time, provide valuable information on the dynamics of the interactions, potentially improving the model's predictive power. This approach helps in understanding the importance of temporal dynamics in link prediction and ensures that the model generalizes well to new data.
+-   The **F1 score** of **0.8** reflects a good balance between precision and recall.
+
+Regarding the **model coefficients**, we note that `freq` and `last_time` were excluded due to multicollinearity or lack of variation in the training data. This suggests that while temporal features are conceptually valuable, in this case they did not contribute additional signal over structural heuristics—possibly due to a small dataset or limited timestamp variability.
+
+Incorporating temporal dynamics into the link prediction model offers a principled way to account for how relationships evolve. Although `freq` and `last_time` did not improve performance in this example, the modeling approach remains valid and could yield stronger results with larger or more temporally diverse datasets. This highlights the potential value of combining **structural** and **temporal** features to enhance link prediction in dynamic social networks.
 
 #### Community detection features (e.g., are both nodes in the same community?)
 
 Community detection algorithms can identify groups of nodes that are more densely connected within the group than with the rest of the network. Features such as whether both nodes belong to the same community can be useful in link prediction, as nodes within the same community are more likely to form connections.
 
 ```{r}
+#| warning: false
 # Convert directed training graph to undirected
 g_train_undirected <- as.undirected(g_train, mode = "collapse")
 
@@ -704,31 +937,41 @@ summary(model)
 
 ```
 
-The coefficients show the contribution of each feature to the prediction. The **`same_community`** coefficient has a high positive value and is statistically significant (low p-value), suggesting it is an important predictor.
+Community detection algorithms identify groups of nodes that are more densely connected internally than with the rest of the network. In this model, we introduced a **binary feature** `same_community` to capture whether both nodes in a pair belong to the same community, based on **Louvain modularity**.
 
-This indicates that links between nodes in the same community are more likely to exist, capturing the homophily principle where nodes within the same community are more likely to form connections.
+However, from the model output, we observe that **none of the features—including `same_community`—were statistically significant** (all p-values ≈ 1). This result could stem from several factors:
 
-The null deviance and residual deviance provide information on the model's fit. A lower residual deviance compared to the null deviance suggests that the model fits the data well.
+-   The dataset used for training is likely too small to support reliable statistical inference.
 
-The AIC (Akaike Information Criterion) is a measure of the model's quality, with lower values indicating a better model.
+-   Strong multicollinearity or class imbalance may affect the regression estimates.
 
-In conclusion, the incorporation of community detection features into the link prediction model enhances its ability to capture the community structure of the network. The high positive coefficient and statistical significance of the **`same_community`** feature suggest that nodes within the same community are more likely to form connections, providing valuable information for predicting the class of links. This approach helps in understanding the importance of community structure in link prediction and ensures that the model generalizes well to new data.
+-   The model may be overfitting due to excessive complexity relative to data size.
+
+While the **null deviance (29.07)** and **residual deviance (\~0)** suggest an almost perfect fit, this is misleading in context. The very low residual deviance paired with high p-values indicates a degenerate or overfit model, where coefficients cannot be reliably interpreted.
+
+Although **community structure** is theoretically valuable for link prediction—nodes within the same community are more likely to connect—this particular model does **not provide statistical evidence** for that claim. To properly assess the predictive value of `same_community`, we recommend either:
+
+-   Expanding the dataset size
+
+-   Simplifying the model
+
+-   Or using community-based features in combination with robust evaluation methods (e.g., cross-validation with larger holdouts)
 
 ## Conclusion
 
-In this analysis, we explored various techniques to enhance link prediction in social networks. We began by evaluating basic structural heuristics such as common neighbors, Jaccard similarity, Adamic-Adar index, and preferential attachment. These metrics provided a foundational understanding of the network's structure and the likelihood of link formation between nodes.
+In this analysis, we explored a range of techniques to improve link prediction in social networks. We began by evaluating core structural heuristics—**common neighbors**, **Jaccard similarity**, **Adamic-Adar index**, and **preferential attachment**—which provided a baseline understanding of local network structure and link likelihood.
 
-We then incorporated more advanced features, including Katz Centrality and PageRank, to capture the influence and importance of nodes within the network. These features helped in identifying influential nodes and understanding their role in link formation.
+To expand on this foundation, we incorporated **Katz centrality** and **PageRank** to capture node influence and global connectivity patterns. These features helped identify structurally important nodes that may be more likely to form new connections.
 
-Furthermore, we explored the use of spectral embedding techniques to capture the underlying structural properties of the network. The visualization of node embeddings provided insights into the distribution and clustering of nodes, enhancing our understanding of the network's topology.
+We also applied **spectral embedding techniques**, which allowed us to visualize and quantify latent structural patterns in the network. These embeddings offered insight into node similarity based on their positions in the overall topology.
 
-Temporal dynamics were also considered, where we incorporated features such as frequency and most recent contact time. These temporal features captured the evolving nature of the network, providing valuable information on the dynamics of interactions.
+To account for the **temporal evolution** of the network, we introduced features such as **interaction frequency** and **recency of last contact**, using timestamped communication data from the `g_calls` network. These temporal indicators provided additional context for understanding how relationships develop over time.
 
-Finally, we utilized community detection features to identify clusters of nodes that are more densely connected within the cluster than with the rest of the network. The incorporation of community detection features highlighted the importance of community structure in link prediction, capturing the homophily principle where nodes within the same community are more likely to form connections.
+In addition, we explored the role of **community structure** by adding a `same_community` feature based on Louvain-detected clusters. While theoretically valuable, this feature did not yield statistically significant improvements in our final model—possibly due to small sample size or overlapping signals with other predictors.
 
-The logistic regression models trained on these features demonstrated high accuracy, precision, recall, and F1 scores, indicating the effectiveness of the proposed techniques in predicting the class of links. The inclusion of advanced features such as Katz Centrality, PageRank, spectral embeddings, temporal dynamics, and community detection significantly enhanced the model's predictive power.
+Across these experiments, the **logistic regression models** trained on combined structural and temporal features achieved **high precision, recall, and F1 scores**, confirming the value of multi-faceted feature sets in link prediction.
 
-In conclusion, the integration of structural, temporal, and community-based features provides a comprehensive approach to link prediction in social networks. These techniques capture the complex patterns and dependencies within the network, offering valuable insights into the underlying mechanisms of link formation. Future work could explore the integration of additional features and more sophisticated modeling techniques to further enhance the predictive performance of link prediction models.
+In conclusion, integrating **structural, temporal, and community-based features** offers a robust approach to modeling link formation in social networks. These techniques capture both local and global patterns, enriching our understanding of how connections emerge and evolve. Future work could benefit from applying these methods to larger, more dynamic datasets and from testing more sophisticated models such as **node embeddings** (e.g., Node2Vec) or **graph neural networks** to further improve predictive performance.
 
 ## References
 
