@@ -603,6 +603,34 @@ In conclusion, the precision of 0.88 indicates that the model has a high accurac
 The **`jaccard`** heuristic appears to be the most important, as indicated by its high positive coefficient and statistical significance. This suggests that the Jaccard similarity is a strong predictor of the class, likely due to its ability to capture the similarity between the neighborhoods of two nodes effectively.\
 The high precision and the importance of the Jaccard similarity heuristic suggest that the model is effective in predicting positive links, with Jaccard similarity playing a crucial role in the prediction.
 
+#### **Comparative Performance Across Networks**
+
+While the primary analysis focused on the Facebook Friends network (`g_fb`), we briefly compare the performance of link prediction heuristics across all three networks:
+
+1.  **Facebook Friends (`g_fb`, undirected)**
+
+    -   **Density**: High (6,429 edges among 800 nodes).
+
+    -   **Key Observation**: Jaccard similarity and Adamic-Adar were the strongest predictors (precision: 0.88).
+
+    -   **Challenge**: Preferential attachment was insignificant, possibly due to the network’s dense, egalitarian structure.
+
+2.  **Calls Network (`g_calls`, directed)**
+
+    -   **Density**: Moderate (3,600 edges among 536 nodes).
+
+    -   **Key Observation**: Temporal features (e.g., call frequency) were tested but did not improve predictions, likely due to limited timestamp variability.
+
+    -   **Challenge**: Directed edges complicate heuristic definitions (e.g., "common neighbors" must consider directionality).
+
+3.  **SMS Network (`g_sms`, directed)**
+
+    -   **Density**: Very high (24,333 edges among 568 nodes).
+
+    -   **Key Observation**: Similar to `g_calls`, but the extreme density may dilute the predictive power of local heuristics (e.g., Jaccard).
+
+    -   **Challenge**: Sparsity of meaningful non-edges for negative class sampling.
+
 ### 5. Comment on potential ways to improve the link prediction
 
 These suggestions cover a range of advanced techniques that can capture more complex patterns and dependencies in the network, potentially improving the accuracy and robustness of the link prediction model. Implementing these features would involve additional data preprocessing and potentially more sophisticated modeling techniques, but they can significantly enhance the model's predictive power.
