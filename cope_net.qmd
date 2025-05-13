@@ -69,7 +69,7 @@ We loaded three different networks:
 
 ### Manual Similarity Metrics
 
-To demonstrate understanding of the core proximity metrics, we apply a function to compute common neighbors, Jaccard similarity, Adamic-Adar, and preferential attachment for two selected nodes across three different networks: Facebook Friends, Calls, and SMS. This function is applied to each network to calculate and display these metrics. Additionally, we visualize the shortest path between the selected nodes in each network, highlighting the nodes and edges involved in the path.
+To demonstrate understanding of the core proximity metrics, we apply a function to compute common neighbors, Jaccard similarity, Adamic-Adar, and preferential attachment for two selected nodes across the three different networks. This function is applied to each network to calculate and display these metrics. Additionally, we visualize the shortest path between the selected nodes in each network, highlighting the nodes and edges involved in the path.
 
 ```{r}
 # Load the Zachary karate club graph
@@ -637,9 +637,7 @@ These suggestions cover a range of advanced techniques that can capture more com
 
 #### Katz Centrality or Rooted PageRank
 
-The Katz Centrality measures the influence of a node based on the number of paths that traverse it, considering both direct and indirect connections. We thought incorporating Katz centrality could help capture the global influence of nodes, which might be useful in predicting links.
-
-[This is a variant of the PageRank algorithm that measures the importance of nodes based on their connectivity, starting from a specific root node. It can help identify influential nodes that might play a crucial role in link formation.]{.underline}
+We thought incorporating Katz centrality could help capture the global influence of nodes, which might be useful in predicting links.
 
 ```{r}
 #| warning: false
@@ -708,7 +706,7 @@ The resulting *F1 score* of **0.836** suggests a good balance between precision 
 
 Regarding the *model coefficients*, several heuristics stood out:
 
--   **`jaccard`**, **`adamic_adar`**, and **`katz_product`** have high positive coefficients and low p-values, indicating they are statistically significant and positively associated with link formation. Their contribution reinforces the importance of both local similarity (shared neighborhoods) and global node influence.
+-   **`jaccard`**, **`adamic_adar`**, and **`katz_product`** have high positive coefficients and low p-values, indicating they are statistically significant and positively associated with link formation. Their contribution reinforces the importance of both local similarity and global node influence.
 
 -   **`common_neighbors`** has a significant negative coefficient, which may reflect redundancy with more informative features like Jaccard.
 
@@ -716,7 +714,9 @@ Regarding the *model coefficients*, several heuristics stood out:
 
 In conclusion, the model continues to perform well, with a high precision of **0.886** and an F1 score of **0.836**. Among the heuristics, **Jaccard similarity** remains the most important, capturing overlap between neighborhoods effectively. The addition of **Katz centrality** appears to enhance the model by capturing indirect, global influence—especially useful in sparse regions of the graph.
 
-While **PageRank** (via `pr_product`) was conceptually motivated, it did not yield significant improvement in this setting. Future work could explore variations (e.g., personalized PageRank) or feature interactions. Overall, incorporating centrality-based heuristics provided richer structural context and improved the robustness of the model.
+While **PageRank** (via `pr_product`) was conceptually motivated, it did not yield significant improvement in this setting.
+
+Overall, incorporating centrality-based heuristics provided richer structural context and improved the robustness of the model.
 
 #### Node embeddings (e.g., Node2Vec or GCNs)
 
@@ -764,15 +764,15 @@ ggplot(embedding_df, aes(x = X1, y = X2)) +
 
 ```
 
-This *Spectral Embedding Plot* shows the nodes in a 2D space, with the first and second spectral dimensions as the axes. This visualization helps in understanding the distribution and clustering of nodes based on their spectral properties. Nodes that are close in this space are likely to have similar structural roles in the graph, indicating potential connections or similarities.
+This **Spectral Embedding Plot** shows the nodes in a 2D space, with the first and second spectral dimensions as the axes. This visualization helps in understanding the distribution and clustering of nodes based on their spectral properties. Nodes that are close in this space are likely to have similar structural roles in the graph, indicating potential connections or similarities.
 
-The *node embeddings* capture the structural properties of the graph, providing a rich representation of the nodes. These embeddings can be used as features in machine learning models for tasks like link prediction. The similarity score derived from the embeddings helps in quantifying the likelihood of a link existing between two nodes, based on their structural properties.
+The **node embeddings** capture the structural properties of the graph, providing a rich representation of the nodes. These embeddings can be used as features in machine learning models for tasks like link prediction. The similarity score derived from the embeddings helps in quantifying the likelihood of a link existing between two nodes, based on their structural properties.
 
 To conclude, the spectral embedding of nodes provides a powerful way to capture the structural properties of the graph, enabling more sophisticated analysis and modeling. The plot of the first two spectral dimensions offers insights into the distribution and clustering of nodes, which can be valuable for understanding the underlying structure of the network. The use of node embeddings as features in link prediction models can enhance the model's ability to capture complex patterns and dependencies, potentially improving the predictive performance.
 
 #### Temporal Dynamics with Available Timestamps: g_calls or g_sms
 
-We are using the **calls network** (`g_calls`) for this example, although the **SMS network** (`g_sms`) could also be used. Since these networks include **timestamps**, we can incorporate **temporal dynamics** to better understand the evolution of interactions over time. Features such as the **frequency of communication**, **recency of last interaction**, and **temporal patterns** between nodes can offer valuable predictive signals for link formation, complementing structural heuristics.
+We are using the **calls network** for this example, although the **SMS network** could also be used: since these networks include **timestamps**, we can incorporate **temporal dynamics** to better understand the evolution of interactions over time. Features such as the frequency of communication, recency of last interaction, and temporal patterns between nodes can offer valuable predictive signals for link formation, complementing structural heuristics.
 
 ```{r}
 #| warning: false
@@ -977,13 +977,7 @@ However, from the model output, we observe that **none of the features—includi
 
 While the **null deviance (29.07)** and **residual deviance (\~0)** suggest an almost perfect fit, this is misleading in context. The very low residual deviance paired with high p-values indicates a degenerate or overfit model, where coefficients cannot be reliably interpreted.
 
-Although **community structure** is theoretically valuable for link prediction—nodes within the same community are more likely to connect—this particular model does **not provide statistical evidence** for that claim. To properly assess the predictive value of `same_community`, we recommend either:
-
--   Expanding the dataset size
-
--   Simplifying the model
-
--   Or using community-based features in combination with robust evaluation methods (e.g., cross-validation with larger holdouts)
+Although community structure is theoretically valuable for link prediction, since nodes within the same community are more likely to connect, this particular model does not provide statistical evidence for that claim. To properly assess the predictive value of `same_community`, we could expand the dataset size, simplify the model, or using community-based features in combination with robust evaluation methods.
 
 ## Conclusion
 
